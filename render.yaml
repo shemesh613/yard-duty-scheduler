@@ -1,0 +1,12 @@
+# הגדרות פריסה אוטומטית לשרת Render (חינמי).
+# כשמחברים את המאגר ל-Render, הקובץ הזה מגדיר הכל אוטומטית.
+services:
+  - type: web
+    name: yard-duty-scheduler
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
