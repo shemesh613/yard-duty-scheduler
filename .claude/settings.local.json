@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://api.green-api.com/waInstance7103493878/getStateInstance/cdbfb539b5e7411481569cd1d0527ffa66edf2d2d9f94ff5bc\")",
+      "Bash(curl -s \"https://api.green-api.com/waInstance7103493878/getSettings/cdbfb539b5e7411481569cd1d0527ffa66edf2d2d9f94ff5bc\")",
+      "Bash(curl *)",
+      "Bash(py --version)",
+      "PowerShell(Get-Command *)",
+      "Bash(node -e ' *)",
+      "Bash(node genSample.js)",
+      "Bash(node -e \"const m=require\\('../samples/model.sample.json'\\); console.log\\(JSON.stringify\\(m.teachers.find\\(t=>t.name==='ויטן לאה'\\),null,1\\).slice\\(0,900\\)\\)\")",
+      "Bash(npm install *)",
+      "Read(//tmp/**)",
+      "Bash(node -e \"require\\('xlsx'\\);require\\('express'\\);require\\('multer'\\);console.log\\('deps OK'\\)\")",
+      "Bash(node -e \"const m=require\\('./samples/model.sample.json'\\); console.log\\('teachers',m.teachers.length,'classes',m.classes.length,'lessons',m.lessons.length\\); console.log\\(JSON.stringify\\(m.teachers.find\\(t=>t.homeroomOf\\),null,1\\)\\); console.log\\('---rabbi---'\\); console.log\\(JSON.stringify\\(m.teachers.find\\(t=>t.rabbi\\),null,1\\).slice\\(0,400\\)\\); console.log\\('---meta keys---', Object.keys\\(m.meta\\)\\);\")",
+      "Bash(node -e \"const m=require\\('./samples/model.sample.json'\\); console.log\\('classes',m.classes.length\\); console.log\\('genders',[...new Set\\(m.classes.map\\(c=>c.gender\\)\\)]\\); console.log\\('teachers',m.teachers.length\\); console.log\\('hasHomeroom',m.teachers.filter\\(t=>t.homeroomOf\\).length\\); console.log\\('genderAreas',[...new Set\\(m.teachers.map\\(t=>t.genderArea\\)\\)]\\); console.log\\('periods',m.meta.periods\\); console.log\\('days',m.meta.days\\);\")",
+      "Bash(ls -la config/)",
+      "Bash(ls -la src/engine/)",
+      "Bash(node -c src/engine/parse.js)",
+      "Bash(node -c src/engine/infer.js)"
+    ]
+  }
+}

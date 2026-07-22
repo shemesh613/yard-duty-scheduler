@@ -1,0 +1,253 @@
+/* עיצוב RTL נעים ומודרני — ידידותי למורה לא טכנית. בעלות סוכן 5. */
+:root {
+  --bg: #f3f6fb;
+  --card-bg: #ffffff;
+  --primary: #3a6ea5;
+  --primary-dark: #2c5580;
+  --accent: #2e9e6b;
+  --accent-dark: #248055;
+  --text: #1f2d3d;
+  --muted: #6b7a8d;
+  --border: #e2e8f0;
+  --warn-bg: #fff4e5;
+  --warn: #c47f1a;
+  --error-bg: #fde8e8;
+  --error: #c0392b;
+  --shadow: 0 6px 24px rgba(40, 70, 110, 0.08);
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Rubik", "Arial", sans-serif;
+  background: linear-gradient(180deg, #eaf1fb 0%, var(--bg) 320px);
+  color: var(--text);
+  line-height: 1.6;
+  direction: rtl;
+}
+
+.site-header {
+  text-align: center;
+  padding: 40px 20px 16px;
+}
+.site-header h1 {
+  margin: 0 0 8px;
+  font-size: 2rem;
+  color: var(--primary-dark);
+}
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+/* אזור העלאה */
+.upload-card { text-align: center; }
+
+.drop-zone {
+  border: 2.5px dashed #b9cce4;
+  border-radius: var(--radius);
+  padding: 40px 20px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .1s;
+  background: #fafcff;
+  outline: none;
+}
+.drop-zone:hover,
+.drop-zone:focus { border-color: var(--primary); background: #f0f6ff; }
+.drop-zone.drag-over {
+  border-color: var(--accent);
+  background: #ecfaf2;
+  transform: scale(1.01);
+}
+.drop-icon { font-size: 3rem; margin-bottom: 6px; }
+.drop-title { font-size: 1.25rem; font-weight: 600; margin: 4px 0; }
+.drop-or { color: var(--muted); margin: 8px 0; }
+.drop-hint { color: var(--muted); font-size: .9rem; margin-top: 14px; }
+
+.file-chosen {
+  margin: 18px 0 4px;
+  padding: 12px 18px;
+  background: #eef5ff;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.file-name { font-weight: 600; }
+.link-btn {
+  background: none; border: none; color: var(--primary);
+  cursor: pointer; font-size: .95rem; text-decoration: underline; padding: 0;
+}
+
+/* כפתורים */
+.btn {
+  display: inline-block;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 28px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s, transform .1s, box-shadow .2s;
+  text-decoration: none;
+  font-family: inherit;
+}
+.btn:active { transform: translateY(1px); }
+.btn-secondary { background: #e7eef9; color: var(--primary-dark); }
+.btn-secondary:hover { background: #d8e4f5; }
+
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+.btn-run { margin-top: 22px; padding: 14px 44px; font-size: 1.1rem; }
+.btn:disabled { background: #cdd6e3; color: #fff; cursor: not-allowed; }
+
+.btn-download {
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.1rem;
+  padding: 14px 36px;
+  box-shadow: 0 4px 14px rgba(46, 158, 107, .3);
+}
+.btn-download:hover { background: var(--accent-dark); }
+
+/* טעינה */
+.loading { text-align: center; color: var(--muted); }
+.spinner {
+  width: 48px; height: 48px;
+  margin: 0 auto 14px;
+  border: 5px solid #e2ebf7;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* שגיאה */
+.error-box {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  background: var(--error-bg);
+  border: 1px solid #f5c2bd;
+}
+.error-icon { font-size: 1.8rem; }
+.error-title { font-weight: 700; color: var(--error); margin: 0 0 4px; }
+.error-detail { margin: 0; color: #8a4036; font-size: .92rem; word-break: break-word; }
+
+/* תוצאות */
+.summary-card h2, .preview-card h2 {
+  margin: 0 0 18px;
+  color: var(--primary-dark);
+  font-size: 1.3rem;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 16px;
+}
+.stat {
+  background: #f4f8fe;
+  border-radius: 12px;
+  padding: 18px 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.stat-num { font-size: 2rem; font-weight: 700; color: var(--primary); }
+.stat-label { color: var(--muted); font-size: .95rem; margin-top: 4px; }
+.stat-warn { background: var(--warn-bg); border-color: #f0d9a8; }
+.stat-warn .stat-num { color: var(--warn); }
+
+.download-row { margin-top: 24px; text-align: center; }
+
+.html-preview {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  overflow-x: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.html-preview table { border-collapse: collapse; width: 100%; }
+.html-preview th, .html-preview td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: center;
+}
+.html-preview th { background: #eef5ff; }
+.muted { color: var(--muted); }
+
+/* מסך הגדרות */
+.settings-card h2 { margin: 0 0 10px; color: var(--primary-dark); font-size: 1.3rem; }
+.settings-intro { color: var(--muted); margin: 0 0 18px; font-size: .98rem; }
+.settings-intro strong { color: var(--text); }
+
+.settings-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tab-btn {
+  border: 1px solid var(--border); background: #f4f8fe; color: var(--primary-dark);
+  border-radius: 10px; padding: 8px 22px; font-size: 1rem; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.settings-tools { margin-bottom: 12px; }
+#teacherFilter {
+  width: 100%; max-width: 280px; padding: 9px 14px; border: 1px solid var(--border);
+  border-radius: 10px; font-size: .95rem; font-family: inherit;
+}
+
+.table-wrap { max-height: 56vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; }
+.settings-table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+.settings-table th, .settings-table td {
+  border-bottom: 1px solid var(--border); padding: 8px 12px; text-align: right;
+}
+.settings-table thead th {
+  position: sticky; top: 0; background: #eef5ff; color: var(--primary-dark);
+  z-index: 1; font-weight: 700;
+}
+.settings-table tbody tr:hover { background: #f7fafe; }
+.settings-table .t-name { font-weight: 600; }
+.settings-table .t-days, .settings-table .center { text-align: center; }
+.settings-table select {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: .9rem; background: #fff;
+}
+.settings-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+.badge {
+  display: inline-block; background: #e7eef9; color: var(--primary-dark);
+  border-radius: 6px; padding: 1px 7px; font-size: .72rem; font-weight: 700;
+}
+.settings-actions {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin-top: 20px; align-items: center;
+}
+.settings-actions .btn-run { margin-top: 0; }
+
+.site-footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+  font-size: .9rem;
+}
+
+@media (max-width: 600px) {
+  .site-header h1 { font-size: 1.5rem; }
+  .card { padding: 20px; }
+}

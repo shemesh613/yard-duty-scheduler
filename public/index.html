@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מערכת שיבוץ תורנויות ולוח מגרש</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>מערכת שיבוץ תורנויות ולוח מגרש</h1>
+    <p class="subtitle">העלו קובץ אקסל של מערכת השעות, והמערכת תחשב עבורכם את הלוחות.</p>
+  </header>
+
+  <main class="container">
+    <!-- אזור העלאה -->
+    <section class="card upload-card" id="uploadSection">
+      <div id="dropZone" class="drop-zone" tabindex="0" role="button"
+           aria-label="אזור גרירת קובץ או בחירה">
+        <div class="drop-icon" aria-hidden="true">📄</div>
+        <p class="drop-title">גררו לכאן קובץ אקסל</p>
+        <p class="drop-or">או</p>
+        <button type="button" id="browseBtn" class="btn btn-secondary">בחירת קובץ</button>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" hidden />
+        <p class="drop-hint">קבצי <strong>.xlsx</strong> בלבד</p>
+      </div>
+
+      <div id="fileChosen" class="file-chosen" hidden>
+        <span class="file-name" id="fileName"></span>
+        <button type="button" id="clearFile" class="link-btn">החלפה</button>
+      </div>
+
+      <button type="button" id="inspectBtn" class="btn btn-primary btn-run" disabled>
+        המשך להגדרות ▸
+      </button>
+    </section>
+
+    <!-- מסך הגדרות (מטא-דאטה שלא קיימת בקובץ) -->
+    <section id="settingsSection" class="card settings-card" hidden>
+      <h2>הגדרות שיבוץ</h2>
+      <p class="settings-intro">
+        הערכים מולאו אוטומטית לפי הקובץ. אפשר לשנות מה שצריך — או פשוט ללחוץ
+        <strong>חשב לוחות</strong> ולהשאיר הכול אוטומטי.
+        כאן מגדירים את מה שאי אפשר לדעת מהקובץ: <strong>הנהלה</strong> (לתורנויות תחילת/סוף יום),
+        <strong>הפרדה בנים/בנות</strong>, מי <strong>פטור מתורנות (ל)</strong>, ו<strong>יום חופשי</strong>.
+      </p>
+
+      <div class="settings-tabs">
+        <button type="button" class="tab-btn active" data-tab="teachers">מורים</button>
+        <button type="button" class="tab-btn" data-tab="classes">כיתות</button>
+      </div>
+
+      <div class="settings-tools">
+        <input type="search" id="teacherFilter" placeholder="חיפוש מורה..." />
+      </div>
+
+      <div id="tab-teachers" class="tab-pane">
+        <div class="table-wrap">
+          <table class="settings-table" id="teachersTable">
+            <thead>
+              <tr>
+                <th>מורה</th><th>ימים</th><th>תפקיד</th>
+                <th>מתחם</th><th>פטור (ל)</th><th>יום חופשי</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-classes" class="tab-pane" hidden>
+        <div class="table-wrap">
+          <table class="settings-table" id="classesTable">
+            <thead><tr><th>כיתה</th><th>מתחם (בנים/בנות)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <button type="button" id="backBtn" class="btn btn-secondary">◂ חזרה</button>
+        <button type="button" id="runBtn" class="btn btn-primary btn-run">חשב לוחות</button>
+      </div>
+    </section>
+
+    <!-- מחוון טעינה -->
+    <section id="loading" class="card loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p>מחשב את הלוחות... פעולה זו עשויה להימשך מספר שניות.</p>
+    </section>
+
+    <!-- הודעת שגיאה -->
+    <section id="errorBox" class="card error-box" hidden>
+      <div class="error-icon" aria-hidden="true">⚠️</div>
+      <div>
+        <p class="error-title" id="errorTitle">אירעה שגיאה</p>
+        <p class="error-detail" id="errorDetail"></p>
+      </div>
+    </section>
+
+    <!-- תוצאות -->
+    <section id="results" class="results" hidden>
+      <div class="card summary-card">
+        <h2>סיכום</h2>
+        <div class="stats" id="stats"></div>
+        <div class="download-row">
+          <a id="downloadBtn" class="btn btn-download" href="#">⬇ הורד קובץ אקסל</a>
+        </div>
+      </div>
+
+      <div class="card preview-card">
+        <h2>תצוגה מקדימה</h2>
+        <div id="htmlPreview" class="html-preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>מערכת שיבוץ תורנויות חצר ולוח מגרש</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

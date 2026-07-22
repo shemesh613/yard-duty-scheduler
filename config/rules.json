@@ -1,0 +1,61 @@
+{
+  "_comment": "כללי לוח התורנויות — ניתן לעריכה ידנית. שינוי כאן מתעדכן בהרצה הבאה (העלאת קובץ / חישוב מחדש).",
+
+  "breaks": ["תחילת יום", "אחרי 2", "אחרי 4", "אחרי 6", "סוף יום"],
+
+  "areas": ["חצר בנים", "חצר בנות", "מבנה בנים", "מבנה בנות"],
+
+  "_breaksComment": "תחילת יום / סוף יום = תורנויות הנהלה. הפסקות בפועל: אחרי שיעור 2 (הפסקת 10), אחרי שיעור 4 (הפסקת 12), אחרי שיעור 6.",
+
+  "stationsOverride": {
+    "תחילת יום": 2,
+    "סוף יום": 1
+  },
+  "_stationsOverrideComment": "מספר מורי הנהלה בתחילת יום (2) ובסוף יום (1).",
+
+  "postsPerRegularBreak": 6,
+  "patrolPerBreak": 1,
+  "substitutesPerBreak": 2,
+  "_postsComment": "כל הפסקה רגילה: 6 עמדות תורנות (מתחלקות בין האזורים חצר/מבנה בנים/בנות) + 1 סייר + 2 מ\"מ (מילוי מקום).",
+
+  "specialBreaks": {
+    "_comment": "בימי שני ורביעי יש דינמיקלאס, ובהפסקת 10 (אחרי 2) והפסקת 12 (אחרי 4) נדרשת עמדה נוספת — 7 במקום 6.",
+    "days": ["יום ב", "יום ד"],
+    "breaks": ["אחרי 2", "אחרי 4"],
+    "postsPerBreak": 7
+  },
+
+  "quotas": {
+    "תומכת למידה": 2,
+    "מחנכת": 1,
+    "מורה משלימה תקשורת": 1,
+    "מורה מקצועי": 2,
+    "הנהלה": 2,
+    "חוגים": 0,
+    "_default": 1
+  },
+  "_quotasComment": "מכסת תורנויות בסיס לפי סוג מורה. בנוסף תורנות מ\"מ אחת לכל מורה (extraSubstitution) אם מתאפשר.",
+
+  "extraSubstitution": 1,
+  "minDaysForFullQuota": 3,
+  "lowDaysQuotaCap": 2,
+  "_lowDaysComment": "מורה עם פחות מ-3 ימי עבודה — לכל היותר 2 תורנויות.",
+
+  "balanceYardBuilding": true,
+  "balanceTolerancePerc": 0.5,
+  "_balanceComment": "שאיפה לחצי-חצי בין תורנויות חצר למבנה (סייר ומ\"מ לא נספרים באיזון).",
+
+  "managementBreaks": ["תחילת יום", "סוף יום"],
+  "managementType": "הנהלה",
+  "_managementComment": "תחילת/סוף יום משובצים רק למורי הנהלה (type=הנהלה). את צוות ההנהלה מגדירים ב-config/overrides.json או במסך ההגדרות.",
+
+  "rabbiNameKeyword": "יאיר",
+  "rabbiStartOfDayBreak": "תחילת יום",
+  "_rabbiComment": "מורה ששמו מכיל 'יאיר' משובץ לתורן תחילת יום בכל יום עבודה מלבד dayOff.",
+
+  "preferStandbyAdjacency": true,
+  "_standbyComment": "העדפה לשבץ תורנות בהפסקה הגובלת בשעת שהייה/פרטני.",
+
+  "useLocations": true,
+  "_locationsComment": "אם config/locations.json קיים — הפרדה מגדרית אוטומטית + בונוס קרבה לכיתות."
+}

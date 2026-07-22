@@ -1,0 +1,15 @@
+{
+  "name": "yard-duty-scheduler",
+  "version": "1.0.0",
+  "description": "מערכת שיבוץ תורנויות חצר ולוח מגרש מתוך קובץ מערכת שעות",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "engine": "node src/engine/index.js samples/model.sample.json"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5"
+  }
+}
