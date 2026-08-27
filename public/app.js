@@ -26,8 +26,14 @@
   const htmlPreview = $('htmlPreview');
   const downloadBtn = $('downloadBtn');
 
+  const dutiesTable = $('dutiesTable');
+  const redistributeBtn = $('redistributeBtn');
+  const removedNote = $('removedNote');
+
   let selectedFile = null;
   let inspectData = null;
+  let assignments = [];   // השיבוצים מההרצה האחרונה
+  let removed = [];       // תורנויות שהוסרו ידנית: {teacher, day, break}
 
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
@@ -213,14 +219,26 @@
   }
 
   // --- שלב 2: חישוב הלוחות ---
-  runBtn.addEventListener('click', async () => {
+  // חישוב הלוח. keepRest=true משמר את שאר השיבוצים ומחליף רק את מה שהוסר.
+  async function computePlan(keepRest) {
     if (!selectedFile) return;
-    hide(errorBox); hide(results); show(loading);
+    hide(errorBox); show(loading);
     runBtn.disabled = true;
+    if (redistributeBtn) redistributeBtn.disabled = true;
     try {
+      const overrides = collectOverrides();
+      overrides.blocked = removed;
+      if (keepRest) {
+        const isRemoved = (a) => removed.some((b) =>
+          b.teacher === a.teacherName && b.day === a.day && b.break === a.break);
+        overrides.pinned = assignments.filter((a) => !isRemoved(a)).map((a) => ({
+          teacher: a.teacherName, day: a.day, break: a.break, area: a.area, role: a.role,
+        }));
+      }
+
       const fd = new FormData();
       fd.append('file', selectedFile);
-      fd.append('overrides', JSON.stringify(collectOverrides()));
+      fd.append('overrides', JSON.stringify(overrides));
       const resp = await fetch('/api/run', { method: 'POST', body: fd });
       let data;
       try { data = await resp.json(); }
@@ -235,7 +253,56 @@
       showError('שגיאת תקשורת מול השרת.', (err && err.message) || '');
     } finally {
       runBtn.disabled = false;
+      if (redistributeBtn) redistributeBtn.disabled = false;
     }
+  }
+
+  runBtn.addEventListener('click', () => {
+    removed = [];
+    assignments = [];
+    hide(results);
+    computePlan(false);
+  });
+
+  // חלוקה מחדש של כל הלוח — ההסרות הידניות נשמרות.
+  if (redistributeBtn) {
+    redistributeBtn.addEventListener('click', () => computePlan(false));
+  }
+
+  // ---- טבלת התורנויות ----
+
+  function renderDuties() {
+    const tb = dutiesTable.querySelector('tbody');
+    tb.innerHTML = '';
+    assignments.forEach((a, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${a.day}</td>
+        <td>${a.break}</td>
+        <td>${a.area || a.role}</td>
+        <td class="t-name">${a.teacherName}</td>
+        <td class="center"><button type="button" class="btn-remove" data-idx="${i}"
+              title="הסר את התורן הזה ומצא אחר">הסר</button></td>`;
+      tb.appendChild(tr);
+    });
+
+    if (removed.length) {
+      removedNote.textContent = 'הוסרו ידנית: ' + removed.length
+        + ' תורנויות. הן לא יוחזרו לאותם מורים בחישובים הבאים.';
+      show(removedNote);
+    } else {
+      hide(removedNote);
+    }
+  }
+
+  // הסרת תורן — המערכת תמצא מחליף לאותה הפסקה, ושאר הלוח נשמר.
+  dutiesTable.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-remove');
+    if (!btn) return;
+    const a = assignments[Number(btn.dataset.idx)];
+    if (!a) return;
+    removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+    computePlan(true);
   });
 
   function renderResults(data) {
@@ -248,6 +315,9 @@
       card.innerHTML = `<div class="stat-num">${value}</div><div class="stat-label">${STAT_LABELS[key] || key}</div>`;
       statsEl.appendChild(card);
     });
+
+    assignments = Array.isArray(data.assignments) ? data.assignments : [];
+    renderDuties();
 
     htmlPreview.innerHTML = data.html || '<p class="muted">אין תצוגה זמינה.</p>';
 

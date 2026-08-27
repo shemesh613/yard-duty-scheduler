@@ -52,15 +52,76 @@ function mergeRules(rules) {
   return r;
 }
 
+// ---------- מתחמים (config/zones.json) ----------
+// כל כיתה שייכת לשני מתחמים. המתחמים מחליפים את חלוקת "חצר/מבנה בנים/בנות" הישנה.
+function loadZones() {
+  try {
+    const p = path.join(__dirname, '..', '..', 'config', 'zones.json');
+    const z = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!z || !Array.isArray(z.zones) || !z.zones.length) return null;
+    return z;
+  } catch (e) {
+    return null;
+  }
+}
+
+// מגדר של מתחם = המגדר של רוב הכיתות שסמוכות לו.
+function buildZoneGender(zones, model) {
+  const genderOfClass = {};
+  for (const c of (model && model.classes) || []) {
+    if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
+  }
+  const tally = {};
+  for (const [cls, list] of Object.entries(zones.zonesByClass || {})) {
+    const g = genderOfClass[cls];
+    if (!g) continue;
+    for (const zone of list || []) {
+      const acc = tally[zone] || (tally[zone] = { 'בנים': 0, 'בנות': 0 });
+      acc[g]++;
+    }
+  }
+  const out = {};
+  for (const [zone, acc] of Object.entries(tally)) {
+    if (acc['בנים'] === acc['בנות']) out[zone] = null; // מעורב — פתוח לשניהם
+    else out[zone] = acc['בנים'] > acc['בנות'] ? 'בנים' : 'בנות';
+  }
+  return out;
+}
+
+// סיווג מתחם כחצר או כמבנה — לצורך כלל האיזון בלבד.
+// ניתן לקבוע מפורשות ב-zones.json תחת "kindByZone"; אחרת מסווג לפי שם המתחם.
+function buildZoneKind(zones) {
+  const explicit = (zones && zones.kindByZone) || {};
+  const out = {};
+  for (const zone of zones.zones) {
+    if (explicit[zone] === 'חצר' || explicit[zone] === 'מבנה') {
+      out[zone] = explicit[zone];
+      continue;
+    }
+    out[zone] = /חצר|מגרש|אמפי|פינה ירוקה|דשא/.test(zone) ? 'חצר' : 'מבנה';
+  }
+  return out;
+}
+
+// הקשר המתחמים להרצה הנוכחית. null כשאין קובץ מתחמים (אז נשמרת ההתנהגות הישנה).
+let ZONES = null;
+
 // ---------- עזרי אזור ----------
 function isYardArea(area) {
-  return typeof area === 'string' && area.indexOf('חצר') !== -1;
+  if (typeof area !== 'string') return false;
+  if (ZONES && ZONES.kind[area]) return ZONES.kind[area] === 'חצר';
+  return area.indexOf('חצר') !== -1;
 }
 function isBuildingArea(area) {
-  return typeof area === 'string' && area.indexOf('מבנה') !== -1;
+  if (typeof area !== 'string') return false;
+  if (ZONES && ZONES.kind[area]) return ZONES.kind[area] === 'מבנה';
+  return area.indexOf('מבנה') !== -1;
 }
 function areaGender(area) {
   if (typeof area !== 'string') return null;
+  if (ZONES && Object.prototype.hasOwnProperty.call(ZONES.gender, area)) {
+    return ZONES.gender[area];
+  }
   if (area.indexOf('בנות') !== -1) return 'בנות';
   if (area.indexOf('בנים') !== -1) return 'בנים';
   return null;
@@ -69,6 +130,37 @@ function roleForArea(area) {
   if (isYardArea(area)) return 'חצר';
   if (isBuildingArea(area)) return 'מבנה';
   return 'חצר';
+}
+
+// המתחמים שבהם המורה נמצא פיזית סמוך להפסקה — לפי הכיתה שבה לימד בשיעור שלפניה.
+// מחזיר null אם לא לימד בכיתה בשיעור הקודם (ואז נופלים לכלל ה-80%).
+function zonesFromPreviousLesson(teacher, day, brk) {
+  if (!ZONES) return null;
+  const periods = breakToPeriods(brk);
+  if (!periods) return null;
+  const prev = periods[0];
+  const zones = new Set();
+  for (const l of teacher.lessons || []) {
+    if (l.day !== day || l.period !== prev || !l.cls) continue;
+    for (const z of ZONES.byClass[l.cls] || []) zones.add(z);
+  }
+  return zones.size ? zones : null;
+}
+
+// המגדר שקובע לשיבוץ: קודם לפי הכיתה שלימד בה בשיעור הקודם, אחרת המתחם הקבוע של המורה.
+function effectiveGender(teacher, day, brk) {
+  if (ZONES) {
+    const periods = breakToPeriods(brk);
+    if (periods) {
+      for (const l of teacher.lessons || []) {
+        if (l.day !== day || l.period !== periods[0] || !l.cls) continue;
+        const g = ZONES.genderOfClass[l.cls];
+        if (g) return g;
+      }
+    }
+  }
+  const ga = teacher.genderArea;
+  return (ga === 'בנים' || ga === 'בנות') ? ga : null;
 }
 
 // "אחרי N" → הפסקה בין שיעור N לשיעור N+1 (תואם yard.js).
@@ -107,7 +199,9 @@ function effectiveQuota(teacher, r) {
   const nd = typeof teacher.numDaysWorked === 'number'
     ? teacher.numDaysWorked
     : (Array.isArray(teacher.daysWorked) ? teacher.daysWorked.length : 0);
-  if (nd < (r.minDaysForFullQuota || 3)) {
+  // כלל "פחות משלושה ימים" חל רק כשידוע כמה ימים המורה עובד.
+  // מורה בלי מערכת כלל — אין נתון, ולכן מקבל מכסה מלאה.
+  if (!hasNoSchedule(teacher) && nd < (r.minDaysForFullQuota || 3)) {
     q = Math.min(q, r.lowDaysQuotaCap != null ? r.lowDaysQuotaCap : 2);
   }
   return Math.max(0, q);
@@ -116,8 +210,16 @@ function effectiveQuota(teacher, r) {
 // ---------- בדיקת זמינות זמן (חלון עבודה) ----------
 // אסור לשבץ תורנות לפני workSpan.first או אחרי workSpan.last באותו יום,
 // מלבד תחילת/סוף יום (הנהלה).
+// מורה שאין לו שיעורים כלל בקובץ (למשל תומכות למידה, שאין מידע על כיתותיהן).
+// לא ניתן להסיק מתי הוא בבית הספר — לכן הוא נחשב זמין בכל הפסקה, ומשובץ
+// לפי מה שמתאים. החלטת הנהלה, 27.8.2026.
+function hasNoSchedule(teacher) {
+  return !Array.isArray(teacher.lessons) || teacher.lessons.length === 0;
+}
+
 function withinWorkSpan(teacher, day, brk, r) {
   if (isManagementBreak(brk, r)) return true; // תחילת/סוף יום פטורים
+  if (hasNoSchedule(teacher)) return true;    // אין מערכת — זמין בכל שעה
   const ws = teacher.workSpan && teacher.workSpan[day];
   if (!ws) return false; // אם המורה לא עובד באותו יום — לא זמין
   const periods = breakToPeriods(brk);
@@ -129,6 +231,7 @@ function withinWorkSpan(teacher, day, brk, r) {
 }
 
 function worksOnDay(teacher, day) {
+  if (hasNoSchedule(teacher)) return true; // אין מערכת — נחשב זמין בכל יום
   if (Array.isArray(teacher.daysWorked) && teacher.daysWorked.length) {
     return teacher.daysWorked.indexOf(day) !== -1;
   }
@@ -156,10 +259,11 @@ function freeAroundBreak(teacher, day, brk) {
   return !(t0 && t1);
 }
 
-// בדיקת התאמה מגדרית בין מורה לאזור.
-function genderOk(teacher, area) {
-  const ga = teacher.genderArea;
-  if (ga !== 'בנים' && ga !== 'בנות') return true; // null/לא מוגדר → מותר בשני המתחמים
+// בדיקת התאמה מגדרית בין מורה לאזור, בהקשר של יום והפסקה מסוימים.
+// המגדר הקובע: הכיתה שבה לימד בשיעור שלפני ההפסקה; ורק אם אין כזו — המתחם הקבוע שלו.
+function genderOk(teacher, area, day, brk) {
+  const ga = effectiveGender(teacher, day, brk);
+  if (ga !== 'בנים' && ga !== 'בנות') return true; // לא ידוע → מותר בשני המתחמים
   const ag = areaGender(area);
   if (ag == null) return true;
   return ga === ag;
@@ -229,7 +333,9 @@ function buildSlots(model, r) {
       for (let i = 0; i < patrol; i++) {
         slots.push({ day, break: brk, area: null, role: 'סייר', mgmt: false, patrol: true, idx: i });
       }
-      const subs = r.substitutesPerBreak || 0;
+      const subs = (r.substitutesOverride && r.substitutesOverride[brk] != null)
+        ? r.substitutesOverride[brk]
+        : (r.substitutesPerBreak || 0);
       for (let i = 0; i < subs; i++) {
         slots.push({ day, break: brk, area: null, role: 'מ"מ', mgmt: false, substitute: true, idx: i });
       }
@@ -244,6 +350,26 @@ function assignDuties(model, rules, options = {}) {
   const locations = (r.useLocations) ? loadLocations() : null;
   const violations = [];
   const warnings = [];
+
+  // מתחמי התורנות. כשקיים config/zones.json הם מחליפים את ארבעת האזורים הישנים,
+  // ועמדה אחת נפתחת בכל מתחם בכל הפסקה.
+  const zonesFile = loadZones();
+  if (zonesFile) {
+    const genderOfClass = {};
+    for (const c of (model && model.classes) || []) {
+      if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
+    }
+    ZONES = {
+      byClass: zonesFile.zonesByClass || {},
+      genderOfClass,
+      gender: buildZoneGender(zonesFile, model),
+      kind: buildZoneKind(zonesFile),
+    };
+    r.areas = zonesFile.zones.slice();
+    if (r.postsPerRegularBreak == null) r.postsPerRegularBreak = r.areas.length;
+  } else {
+    ZONES = null;
+  }
 
   const teachers = (model && model.teachers) || [];
   const byId = new Map(teachers.map(t => [t.id, t]));
@@ -277,6 +403,54 @@ function assignDuties(model, rules, options = {}) {
 
   const slots = buildSlots(model, r);
 
+  // ---------- הסרות ידניות ונעילות ----------
+  // blocked: תורנויות שהוסרו ידנית — אותו מורה לא ישובץ שוב לאותה הפסקה,
+  //          והמערכת תמצא תורן אחר לעמדה שהתפנתה.
+  // pinned:  תורנויות שכבר נקבעו ויש לשמר אותן — כדי שהסרה בודדת
+  //          לא תערבב את כל הלוח.
+  const blockedSet = new Set(
+    (options.blocked || []).map(b => (b.teacher || '') + '|' + (b.day || '') + '|' + (b.break || ''))
+  );
+  const isBlocked = (teacher, day, brk) => blockedSet.has(teacher.name + '|' + day + '|' + brk);
+
+  // תופס עמדה עבור מורה ומעדכן את מצבו. משותף לשיבוץ ידני ולשיבוץ אוטומטי.
+  const takeSlot = (slot, t) => {
+    const st = state.get(t.id);
+    slot._taken = true;
+    assignments.push({
+      day: slot.day, break: slot.break, area: slot.area,
+      role: slot.role, teacherId: t.id, teacherName: t.name,
+    });
+    if (slot.mgmt) st.mgmt++;
+    else if (slot.patrol) st.patrol = (st.patrol || 0) + 1;
+    else if (slot.substitute) st.sub = (st.sub || 0) + 1;
+    else if (isYardArea(slot.area)) st.yard++;
+    else st.building++;
+    st.total++;
+    st.perDay[slot.day] = (st.perDay[slot.day] || 0) + 1;
+    st.assignedSlots.add(slot.day + '|' + slot.break);
+  };
+
+  // שיבוצים משומרים — נתפסים ראשונים, לפני כל חישוב אוטומטי.
+  for (const p of options.pinned || []) {
+    if (!p || !p.teacher) continue;
+    if (blockedSet.has(p.teacher + '|' + p.day + '|' + p.break)) continue;
+    const t = teachers.find(x => x.name === p.teacher);
+    if (!t) continue;
+    const st = state.get(t.id);
+    if (st.assignedSlots.has(p.day + '|' + p.break)) continue;
+    const slot = slots.find(s => !s._taken && s.day === p.day && s.break === p.break
+      && (p.area ? s.area === p.area : s.area == null) && s.role === p.role);
+    if (!slot) continue;
+    takeSlot(slot, t);
+  }
+
+  // יעד האיזון חצר/מבנה נגזר מהמצבת בפועל ולא מחצי-חצי:
+  // אם 4 מתוך 6 המתחמים הם חצר, היעד לכל מורה הוא שני שלישים חצר.
+  const yardSlots = slots.filter((s) => !s.mgmt && !s.patrol && !s.substitute && isYardArea(s.area)).length;
+  const buildingSlots = slots.filter((s) => !s.mgmt && !s.patrol && !s.substitute && isBuildingArea(s.area)).length;
+  r._yardShare = (yardSlots + buildingSlots) > 0 ? yardSlots / (yardSlots + buildingSlots) : 0.5;
+
   // קודם — הרב יאיר לתורן תחילת יום בכל יום עבודה מלבד dayOff.
   const days = (model.meta && model.meta.days) || [];
   const startBreak = r.rabbiStartOfDayBreak || 'תחילת יום';
@@ -285,14 +459,12 @@ function assignDuties(model, rules, options = {}) {
       if (rb.dayOff && rb.dayOff === day) continue;
       if (!worksOnDay(rb, day) && rb.dayOff) continue; // אם לא עובד וגם לא יום חופשי מוגדר — נשבץ בכל יום פעיל
       if (!worksOnDay(rb, day)) continue;
+      if (isBlocked(rb, day, startBreak)) continue;
+      const st = state.get(rb.id);
+      if (st.assignedSlots.has(day + '|' + startBreak)) continue;
       const slot = slots.find(s => s.day === day && s.break === startBreak && s.mgmt && !s._taken);
       if (!slot) continue;
-      slot._taken = true;
-      const st = state.get(rb.id);
-      assignments.push({ day, break: startBreak, area: null, role: 'תחילת יום', teacherId: rb.id, teacherName: rb.name });
-      st.mgmt++; st.total++;
-      st.perDay[day] = (st.perDay[day] || 0) + 1;
-      st.assignedSlots.add(day + '|' + startBreak);
+      takeSlot(slot, rb);
     }
   }
 
@@ -303,18 +475,14 @@ function assignDuties(model, rules, options = {}) {
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
       if (!worksOnDay(t, slot.day)) return false;
+      if (t.dayOff && t.dayOff === slot.day) return false;
+      if (isBlocked(t, slot.day, slot.break)) return false;
       if (st.total >= st.quota) return false;
       return true;
     });
     if (!cands.length) continue;
     cands.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
-    const chosen = cands[0];
-    const st = state.get(chosen.id);
-    slot._taken = true;
-    assignments.push({ day: slot.day, break: slot.break, area: null, role: slot.role, teacherId: chosen.id, teacherName: chosen.name });
-    st.mgmt++; st.total++;
-    st.perDay[slot.day] = (st.perDay[slot.day] || 0) + 1;
-    st.assignedSlots.add(slot.day + '|' + slot.break);
+    takeSlot(slot, cands[0]);
   }
 
   // ---------- שלב 2: עמדות חצר/מבנה ----------
@@ -322,24 +490,11 @@ function assignDuties(model, rules, options = {}) {
   const dutySlots = slots.filter(s => !s.mgmt && !s._taken);
 
   for (const slot of dutySlots) {
-    const cands = eligibleForDuty(slot, teachers, state, r);
+    const cands = eligibleForDuty(slot, teachers, state, r)
+      .filter(t => !isBlocked(t, slot.day, slot.break));
     if (!cands.length) continue;
     cands.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
-    const chosen = cands[0];
-    const st = state.get(chosen.id);
-    slot._taken = true;
-    assignments.push({
-      day: slot.day, break: slot.break, area: slot.area,
-      role: slot.role, teacherId: chosen.id, teacherName: chosen.name,
-    });
-    // סייר ומ"מ אינם נספרים באיזון חצר/מבנה — רק בסה"כ.
-    if (!slot.patrol && !slot.substitute) {
-      if (isYardArea(slot.area)) st.yard++; else st.building++;
-    } else if (slot.patrol) { st.patrol = (st.patrol || 0) + 1; }
-    else if (slot.substitute) { st.sub = (st.sub || 0) + 1; }
-    st.total++;
-    st.perDay[slot.day] = (st.perDay[slot.day] || 0) + 1;
-    st.assignedSlots.add(slot.day + '|' + slot.break);
+    takeSlot(slot, cands[0]);
   }
 
   // ---------- שלב 3: תורנות מ"מ (substitution) — מילוי עמדות שנותרו ----------
@@ -394,12 +549,16 @@ function assignDuties(model, rules, options = {}) {
       quotaOk = false;
     }
 
-    // איזון חצר/מבנה
+    // איזון חצר/מבנה — מול היחס הקיים בפועל, לא מול חצי-חצי.
     if (r.balanceYardBuilding && (st.yard + st.building) >= 2) {
-      const diff = Math.abs(st.yard - st.building);
-      const tol = Math.max(1, Math.ceil((st.yard + st.building) * (r.balanceTolerancePerc != null ? r.balanceTolerancePerc : 0.5)));
+      const n = st.yard + st.building;
+      const share = r._yardShare != null ? r._yardShare : 0.5;
+      const diff = Math.abs(st.yard - n * share);
+      const tol = Math.max(1, Math.ceil(n * (r.balanceTolerancePerc != null ? r.balanceTolerancePerc : 0.5)));
       if (diff > tol) {
-        violations.push('מורה "' + t.name + '": חוסר איזון חצר/מבנה — ' + st.yard + ' חצר מול ' + st.building + ' מבנה.');
+        const expected = Math.round(n * share);
+        violations.push('מורה "' + t.name + '": חוסר איזון חצר/מבנה — ' + st.yard + ' חצר מול ' + st.building
+          + ' מבנה (המצופה לפי המצבת: כ-' + expected + ' חצר מתוך ' + n + ').');
         quotaOk = false;
       }
     }
@@ -407,8 +566,8 @@ function assignDuties(model, rules, options = {}) {
     // בדיקת מגדר וחלון-זמן על השיבוצים בפועל
     const myAssigns = assignments.filter(a => a.teacherId === t.id && a.role !== 'תחילת יום' && a.role !== 'סוף יום');
     for (const a of myAssigns) {
-      if (!genderOk(t, a.area)) {
-        violations.push('מורה "' + t.name + '" שובץ באזור "' + a.area + '" בניגוד למתחם המגדרי שלו (' + t.genderArea + ').');
+      if (!genderOk(t, a.area, a.day, a.break)) {
+        violations.push('מורה "' + t.name + '" שובץ באזור "' + a.area + '" בניגוד למתחם המגדרי שלו (' + effectiveGender(t, a.day, a.break) + ').');
         quotaOk = false;
       }
       if (!withinWorkSpan(t, a.day, a.break, r)) {
@@ -459,14 +618,23 @@ function eligibleForDuty(slot, teachers, state, r) {
   const out = [];
   for (const t of teachers) {
     if (t.noDuty) continue;
-    if (t.type === r.managementType) continue;     // הנהלה לתחילת/סוף יום בלבד
+    // הנהלה — תחילת/סוף יום, ובנוסף רשאית לקחת תורנות סייר.
+    if (t.type === r.managementType && !slot.patrol) continue;
     if (t.type === 'חוגים') continue;              // מורי חוגים ללא תורנות מגרש
     const st = state.get(t.id);
-    if (st.total >= st.quota) continue;            // מכסה (כולל מ"מ) מולאה
+    if (st.total >= st.quota) continue;            // תקרה כוללת (כולל תקרת מורה במיעוט ימים)
+    // תורנות מ"מ היא תורנות רזרבה נוספת: אחת לכל מורה, מעבר למכסת התורנויות הרגילות.
+    if (slot.substitute) {
+      if ((st.sub || 0) >= (r.extraSubstitution || 0)) continue;
+    } else if ((st.total - (st.sub || 0)) >= baseQuota(t, r)) {
+      continue;                                    // מכסת התורנויות הרגילות מולאה
+    }
     if (st.assignedSlots.has(slot.day + '|' + slot.break)) continue; // כבר משובץ באותה הפסקה
     if (!worksOnDay(t, slot.day)) continue;
+    // יום חופשי שנקבע ידנית — אין תורנות באותו יום גם אם המורה בבית הספר.
+    if (t.dayOff && t.dayOff === slot.day) continue;
     if (!withinWorkSpan(t, slot.day, slot.break, r)) continue; // חלון זמן
-    if (!genderOk(t, slot.area)) continue;          // מגדר
+    if (!genderOk(t, slot.area, slot.day, slot.break)) continue;  // מגדר
     if (!freeAroundBreak(t, slot.day, slot.break)) continue; // לא מלמד בשני הצדדים
     out.push(t);
   }
@@ -486,10 +654,12 @@ function candidateCost(t, slot, state, r, locations) {
   // (1) איזון עומס כולל — הכי פחות תורנויות עד כה עדיף.
   cost += st.total * 100;
 
-  // (2) איזון חצר/מבנה — אם זו עמדת חצר, מי שיש לו יותר חצר נדחה, ולהפך.
+  // (2) איזון חצר/מבנה מול היחס הקיים בפועל — מי שכבר מעל היעד באותו סוג נדחה.
   if (!slot.mgmt) {
-    if (isYardArea(slot.area)) cost += (st.yard - st.building) * 25;
-    else if (isBuildingArea(slot.area)) cost += (st.building - st.yard) * 25;
+    const n = st.yard + st.building;
+    const share = r._yardShare != null ? r._yardShare : 0.5;
+    if (isYardArea(slot.area)) cost += (st.yard - n * share) * 50;
+    else if (isBuildingArea(slot.area)) cost += (st.building - n * (1 - share)) * 50;
   }
 
   // (3) פיזור יומי — אם כבר יש לו תורנות באותו יום, פחות עדיף.
@@ -500,7 +670,14 @@ function candidateCost(t, slot, state, r, locations) {
     cost -= 60;
   }
 
-  // (5) קרבה לכיתות (locations) — בונוס.
+  // (5) המתחם שבו המורה כבר נמצא פיזית — הכיתה שלימד בה בשיעור שלפני ההפסקה.
+  // זה השיקול החזק ביותר אחרי איזון העומס: לא מחצים את בית הספר בשתי דקות.
+  if (!slot.mgmt && ZONES) {
+    const near = zonesFromPreviousLesson(t, slot.day, slot.break);
+    if (near && near.has(slot.area)) cost -= 120;
+  }
+
+  // (6) קרבה לכיתות שהמורה מלמד בכלל (locations) — בונוס משני.
   if (!slot.mgmt && locations) {
     cost -= locationBonus(t, slot.area, locations) * 30;
   }

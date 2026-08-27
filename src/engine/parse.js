@@ -16,7 +16,113 @@ const HEADERS = {
 };
 
 function norm(v) {
-  return String(v == null ? '' : v).replace(/["'׳״]/g, '').trim();
+  return String(v == null ? '' : v)
+    // רווח קשיח (U+00A0) מגיע מקובצי אקסל ונראה כמו רווח רגיל, אבל אינו זהה לו.
+    // בלי ההמרה הזו השוואות של שמות ימים מול קובץ הכללים נכשלות בשקט.
+    .replace(/ /g, ' ')
+    .replace(/["'׳״]/g, '')
+    .trim();
+}
+
+// --- פורמט ב': מערכת אישית לכל מורה (טבלת שעה × יום) ---
+
+const TEACHER_BLOCK_RE = /^מערכת\s+שעות\s+למורה\s+(.+)$/;
+const DAY_HEADER_RE = /^יום\s+[א-ו]$/;
+
+// תא בפורמט הזה מכיל שורת מקצוע ואחריה (לפעמים) שורת כיתה.
+// תא יכול להכיל יותר משיעור אחד באותה שעה (שיעור מפוצל) — כל זוג נקרא בנפרד.
+// סימוני (פ)/(ש) מציינים פרטני/שהייה — מומרים למילה המלאה כדי שיזוהו כשעת שהייה.
+function parseCell(text) {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map((s) => norm(s))
+    .filter(Boolean);
+
+  const out = [];
+  for (const line of lines) {
+    // שורה שהיא מזהה כיתה משויכת לשיעור שקדם לה.
+    if (classIdsOf(line).length && out.length) {
+      if (!out[out.length - 1].cls) {
+        out[out.length - 1].cls = line;
+        continue;
+      }
+    }
+    const subject = line
+      .replace(/\(פ\)/g, 'פרטני')
+      .replace(/\(ש\)/g, 'שהייה')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (subject) out.push({ subject, cls: '' });
+  }
+  return out;
+}
+
+// מזהה כיתה תקין: אות שכבה + מספר (א1, ה3, ו5). תא יכול לשאת כמה כיתות מופרדות בפסיק.
+const CLASS_ID_RE = /^[א-ת]{1,2}\d{1,2}$/;
+
+function classIdsOf(text) {
+  return String(text || '')
+    .split(/[,;\/]/)
+    .map((s) => norm(s))
+    .filter((s) => CLASS_ID_RE.test(s) && !FAKE_CLASS_RE.test(s));
+}
+
+// האם הגיליון בנוי כבלוקים של מערכת אישית לכל מורה.
+function isPerTeacherGrid(rows) {
+  return rows.some((r) => r && TEACHER_BLOCK_RE.test(norm(r[0])));
+}
+
+function parsePerTeacherGrid(rows) {
+  const lessons = [];
+  const allTeachers = []; // כל מורה שיש לו בלוק, גם אם הבלוק ריק משיעורים
+  let teacher = null;
+  let dayCols = null; // אינדקס עמודה → שם יום
+
+  for (const row of rows) {
+    if (!row) continue;
+    const first = norm(row[0]);
+
+    const block = first.match(TEACHER_BLOCK_RE);
+    if (block) {
+      teacher = block[1].trim();
+      if (teacher && allTeachers.indexOf(teacher) === -1) allTeachers.push(teacher);
+      dayCols = null;
+      continue;
+    }
+    if (!teacher) continue;
+
+    // שורת כותרת הימים של הבלוק הנוכחי.
+    const cells = row.map(norm);
+    if (cells.some((c) => DAY_HEADER_RE.test(c))) {
+      dayCols = {};
+      cells.forEach((c, i) => { if (DAY_HEADER_RE.test(c)) dayCols[i] = c; });
+      continue;
+    }
+    if (!dayCols) continue;
+
+    const period = Number(first);
+    if (!Number.isFinite(period) || period <= 0) continue;
+
+    for (const [colIdx, day] of Object.entries(dayCols)) {
+      for (const parsed of parseCell(row[colIdx])) {
+        // תא יכול לשאת כמה כיתות ("ג2, ג3") — כל אחת נרשמת כשיעור נפרד.
+        // טקסט שאינו מזהה כיתה (שהייה, ישיבות צוות, השתלמות) נשמר בלי כיתה,
+        // כדי שייספר בשעות העבודה של המורה אך לא ייחשב כשיעור בכיתה.
+        const ids = classIdsOf(parsed.cls);
+        if (!ids.length) {
+          lessons.push({ cls: '', day, period, subject: parsed.subject, teacher });
+          continue;
+        }
+        for (const cls of ids) {
+          lessons.push({ cls, day, period, subject: parsed.subject, teacher });
+        }
+      }
+    }
+  }
+
+  // רשימת כל המורים שיש להם בלוק — כולל מי שהבלוק שלו ריק משיעורים.
+  Object.defineProperty(lessons, '_teachers', { value: allTeachers, enumerable: false });
+  return lessons;
 }
 
 // מאתר את אינדקס שורת הכותרת ואת מיפוי העמודות לפי תוכן (לא לפי מיקום קשיח).
@@ -63,12 +169,25 @@ function parseWorkbook(input) {
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-  const { headerIndex, map } = findHeader(rows);
-  const lessons = [];
-
   // מטא: שם בית הספר (תא ראשון בגיליון) ושם הקובץ (אם נתיב).
   const school = norm(rows[0] && rows[0][0]);
   const sourceFile = typeof input === 'string' ? input.split(/[\\/]/).pop() : '';
+
+  const attachMeta = (arr) => {
+    Object.defineProperty(arr, '_meta', {
+      value: { school, sourceFile, allTeachers: arr._teachers || null },
+      enumerable: false,
+    });
+    return arr;
+  };
+
+  // פורמט ב' — מערכת אישית לכל מורה. מזוהה לפי כותרות "מערכת שעות למורה ...".
+  if (isPerTeacherGrid(rows)) {
+    return attachMeta(parsePerTeacherGrid(rows));
+  }
+
+  const { headerIndex, map } = findHeader(rows);
+  const lessons = [];
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i] || [];
@@ -90,12 +209,7 @@ function parseWorkbook(input) {
   }
 
   // מטא נצמד כתכונה לא-מספירה כדי לא לשנות את חתימת המערך.
-  Object.defineProperty(lessons, '_meta', {
-    value: { school, sourceFile },
-    enumerable: false,
-  });
-
-  return lessons;
+  return attachMeta(lessons);
 }
 
 module.exports = { parseWorkbook };

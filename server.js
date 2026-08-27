@@ -97,6 +97,8 @@ app.post('/api/run', upload.single('file'), (req, res) => {
       ok: true,
       summary,
       html: html || '',
+      // רשימת השיבוצים — כדי שהממשק יוכל להציג טבלה ולאפשר הסרה ידנית.
+      assignments: (dutyPlan && Array.isArray(dutyPlan.assignments)) ? dutyPlan.assignments : [],
       downloadId: workbookBuffer ? downloadId : null
     });
   } catch (err) {

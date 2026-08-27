@@ -10,10 +10,27 @@ function isStandby(subject) {
   return STANDBY_SUBJECTS.some((k) => s.includes(k));
 }
 
-// סוג מורה מתוך שם (קידומת). מחזיר null אם לא ידוע (יעודן לפי הסקת מחנכות).
+// סימוני המקרא ברשימת המורים:
+//   תת  = תומכת למידה   |  (ה) = הנהלה
+//   (ת) = כיתת תקשורת   |  (ל) = לא עושה תורנות כלל
+// הסימונים נבדקים בסוגריים מדויקים, כדי ש"(סגל)" וכדומה לא ייקראו בטעות כסימון.
+const MARK_NO_DUTY = /\(ל\)/;
+const MARK_MANAGEMENT = /\(ה\)/;
+const MARK_COMMUNICATION = /\(ת\)/;
+const MARK_SUPPORT = /^תת[\s-]/;
+
+// האם המורה פטור מתורנות לפי הסימון (ל).
+function noDutyFromName(name) {
+  return MARK_NO_DUTY.test(String(name || ''));
+}
+
+// סוג מורה מתוך שם (קידומת/סימון). מחזיר null אם לא ידוע (יעודן לפי הסקת מחנכות).
 function typeFromName(name) {
   const n = String(name || '');
   if (n.startsWith('ת- חוגים') || n.startsWith('ת-חוגים') || n.includes('חוגים')) return 'חוגים';
+  if (MARK_MANAGEMENT.test(n)) return 'הנהלה';
+  if (MARK_COMMUNICATION.test(n)) return 'מורה משלימה תקשורת';
+  if (MARK_SUPPORT.test(n)) return 'תומכת למידה';
   if (n.includes('מחנכ')) return 'מחנכת';
   if (n.startsWith('הרב') || n.includes(' הרב ')) return 'מורה מקצועי';
   return null;
@@ -41,7 +58,8 @@ function buildModel(rawLessons, overrides = {}) {
   // --- מטא ---
   const days = [...new Set(lessons.map((l) => l.day))];
   const periods = [...new Set(lessons.map((l) => l.period))].sort((a, b) => a - b);
-  const classIds = [...new Set(lessons.map((l) => l.cls))];
+  // שיעורים בלי מזהה כיתה (שהייה, ישיבות צוות) נספרים בשעות העבודה אך אינם כיתה.
+  const classIds = [...new Set(lessons.map((l) => l.cls))].filter(Boolean);
 
   // --- צבירת נתוני מורים ---
   const tmap = {};
@@ -66,6 +84,13 @@ function buildModel(rawLessons, overrides = {}) {
       standby: isStandby(l.subject),
     });
     (t.byDay[l.day] = t.byDay[l.day] || []).push(l.period);
+  }
+
+  // מורים שמופיעים בקובץ אך ללא שיעורים כלל (בלוק ריק) — נכללים במודל
+  // עם מערכת ריקה, כדי שניתן יהיה לשבצם לתורנות לפי מה שמתאים.
+  for (const name of rawMeta.allTeachers || []) {
+    if (tmap[name]) continue;
+    tmap[name] = { name, days: new Set(), classCount: {}, lessons: [], byDay: {} };
   }
 
   // --- הסקת מחנכ/ת לכל כיתה: המורה עם הכי הרבה שעות בכיתה (>= סף) ---
@@ -114,8 +139,8 @@ function buildModel(rawLessons, overrides = {}) {
       .filter((l) => l.standby)
       .map((l) => ({ day: l.day, period: l.period }));
 
-    // noDuty מוסק: חוגים → לא עושים תורנות.
-    let noDuty = type === 'חוגים';
+    // noDuty מוסק: חוגים, או שם המסומן ב-(ל) → לא עושים תורנות כלל.
+    let noDuty = type === 'חוגים' || noDutyFromName(t.name);
     if (ov.noDuty !== undefined && ov.noDuty !== null) noDuty = !!ov.noDuty;
 
     // genderArea: לא ניתן להסקה אוטומטית — null אלא אם נעקף.

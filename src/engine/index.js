@@ -30,15 +30,36 @@ function loadFileOverrides() {
   } catch { return { teachers: {}, classes: {} }; }
 }
 
-// גזירת עקיפות מגדר אוטומטיות מקובץ המיקומים (אם קיים):
-// מגדר לכל כיתה + מתחם מגדרי למורה לפי הכיתות שהוא מלמד (>=80% מגדר אחד).
+// זיהוי מגדר כיתה מתוך מערכת השעות עצמה: בכיתות הבנים מלמדים רבנים.
+// כיתה שיש בה ולו שיעור אחד של "הרב ..." — כיתת בנים; אחרת — כיתת בנות.
+// שימש כגיבוי לכיתות שאינן מופיעות בקובץ המיקומים; ניתן לעקוף במסך ההגדרות.
+function inferGenderFromLessons(lessons) {
+  const byClass = {};
+  for (const l of lessons) {
+    if (!l.cls) continue;
+    const acc = byClass[l.cls] || (byClass[l.cls] = { total: 0, rabbi: 0 });
+    acc.total++;
+    if (/הרב/.test(String(l.teacher || ''))) acc.rabbi++;
+  }
+  const out = {};
+  for (const [cls, acc] of Object.entries(byClass)) {
+    if (acc.total < 10) continue; // מעט מדי שיעורים מכדי להסיק
+    out[cls] = acc.rabbi > 0 ? 'בנים' : 'בנות';
+  }
+  return out;
+}
+
+// גזירת עקיפות מגדר אוטומטיות: קודם קובץ המיקומים, ולכיתות שאינן בו — הסקה מהמערכת.
+// בנוסף, מתחם מגדרי למורה לפי הכיתות שהוא מלמד (>=80% מגדר אחד).
 function deriveGenderOverrides(rawLessons, locations) {
-  const empty = { teachers: {}, classes: {} };
-  if (!locations || !locations._genderByClass) return empty;
-  const g = locations._genderByClass;
+  const lessonsAll = Array.isArray(rawLessons) ? rawLessons : [];
+  const inferred = inferGenderFromLessons(lessonsAll);
+  const known = (locations && locations._genderByClass) || {};
+  const g = { ...inferred, ...known }; // קובץ המיקומים גובר על ההסקה
+  if (!Object.keys(g).length) return { teachers: {}, classes: {} };
   const classes = {};
   const teachers = {};
-  const lessons = Array.isArray(rawLessons) ? rawLessons : [];
+  const lessons = lessonsAll;
   for (const c of new Set(lessons.map((l) => l.cls))) {
     if (g[c]) classes[c] = { gender: g[c] };
   }
@@ -68,6 +89,9 @@ function mergeOverrides(base, user) {
   for (const [k, v] of Object.entries(base.classes || {})) out.classes[k] = { ...v };
   for (const [k, v] of Object.entries(user.classes || {})) out.classes[k] = { ...(out.classes[k] || {}), ...v };
   if (user.meta) out.meta = user.meta;
+  // רשימות התורנויות שהוסרו/נשמרות ידנית עוברות כמות שהן.
+  if (user.blocked || base.blocked) out.blocked = user.blocked || base.blocked;
+  if (user.pinned || base.pinned) out.pinned = user.pinned || base.pinned;
   return out;
 }
 
@@ -86,7 +110,12 @@ function runPipeline(input, overrides = {}) {
   const model = infer.buildModel(rawLessons, mergedOverrides);
   const rules = loadRules();
   const yardPlan = yard.assignYard(model, {});
-  const dutyPlan = duty.assignDuties(model, rules, { yardPlan });
+  // blocked/pinned מגיעים מהממשק: תורנויות שהוסרו ידנית, ותורנויות לשימור.
+  const dutyPlan = duty.assignDuties(model, rules, {
+    yardPlan,
+    blocked: (overrides && overrides.blocked) || [],
+    pinned: (overrides && overrides.pinned) || [],
+  });
   const workbookBuffer = report.buildWorkbook(model, yardPlan, dutyPlan);
   const html = report.buildHtml(model, yardPlan, dutyPlan);
   return { model, yardPlan, dutyPlan, workbookBuffer, html };

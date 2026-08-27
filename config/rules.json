@@ -16,6 +16,11 @@
   "postsPerRegularBreak": 6,
   "patrolPerBreak": 1,
   "substitutesPerBreak": 2,
+
+  "substitutesOverride": {
+    "אחרי 2": 3
+  },
+  "_substitutesOverrideComment": "מספר תורנויות מ\"מ בהפסקה מסוימת. הפסקת 10 (אחרי שיעור 2) — 3 מ\"מ במקום 2. החלטת הנהלה, 27.8.2026.",
   "_postsComment": "כל הפסקה רגילה: 6 עמדות תורנות (מתחלקות בין האזורים חצר/מבנה בנים/בנות) + 1 סייר + 2 מ\"מ (מילוי מקום).",
 
   "specialBreaks": {

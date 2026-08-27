@@ -240,6 +240,45 @@ body {
 }
 .settings-actions .btn-run { margin-top: 0; }
 
+/* ---- לוח התורנויות עם הסרה ידנית ---- */
+.duties-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.duties-head h2 { margin: 0; }
+.btn-secondary {
+  background: #fff; color: var(--primary-dark);
+  border: 1px solid var(--primary-dark); border-radius: 8px;
+  padding: 8px 16px; font-family: inherit; font-size: .92rem;
+  font-weight: 600; cursor: pointer;
+}
+.btn-secondary:hover { background: #eef3fb; }
+.btn-secondary:disabled { opacity: .5; cursor: default; }
+
+.removed-note {
+  background: #fdf3e3; border: 1px solid #e8c98a; color: #7a5510;
+  border-radius: 8px; padding: 8px 12px; font-size: .88rem; margin: 0 0 12px;
+}
+
+.duties-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.duties-table th, .duties-table td {
+  padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: right;
+}
+.duties-table thead th {
+  color: var(--muted); font-weight: 600; font-size: .82rem;
+  border-bottom: 2px solid var(--border); position: sticky; top: 0; background: #fff;
+}
+.duties-table tbody tr:hover { background: #f6f9fd; }
+.duties-table .center { text-align: center; }
+.duties-card .table-wrap { max-height: 460px; overflow: auto; }
+
+.btn-remove {
+  background: #fff; color: #a8412f; border: 1px solid #e0b6ac;
+  border-radius: 6px; padding: 3px 12px; font-family: inherit;
+  font-size: .82rem; cursor: pointer; white-space: nowrap;
+}
+.btn-remove:hover { background: #a8412f; color: #fff; border-color: #a8412f; }
+
 .site-footer {
   text-align: center;
   color: var(--muted);
