@@ -105,22 +105,29 @@ function buildZoneKind(zones) {
 
 // הקשר המתחמים להרצה הנוכחית. null כשאין קובץ מתחמים (אז נשמרת ההתנהגות הישנה).
 let ZONES = null;
+// מיפוי "נקודה בתוך מתחם" → שם המתחם, כדי שתירש ממנו מגדר וסיווג חצר/מבנה.
+let ZONES_ALIAS = {};
+
+// שם המתחם שאליו שייך אזור — הוא עצמו, או המתחם שהנקודה יושבת בו.
+function zoneOf(area) {
+  return ZONES_ALIAS[area] || area;
+}
 
 // ---------- עזרי אזור ----------
 function isYardArea(area) {
   if (typeof area !== 'string') return false;
-  if (ZONES && ZONES.kind[area]) return ZONES.kind[area] === 'חצר';
+  if (ZONES && ZONES.kind[zoneOf(area)]) return ZONES.kind[zoneOf(area)] === 'חצר';
   return area.indexOf('חצר') !== -1;
 }
 function isBuildingArea(area) {
   if (typeof area !== 'string') return false;
-  if (ZONES && ZONES.kind[area]) return ZONES.kind[area] === 'מבנה';
+  if (ZONES && ZONES.kind[zoneOf(area)]) return ZONES.kind[zoneOf(area)] === 'מבנה';
   return area.indexOf('מבנה') !== -1;
 }
 function areaGender(area) {
   if (typeof area !== 'string') return null;
-  if (ZONES && Object.prototype.hasOwnProperty.call(ZONES.gender, area)) {
-    return ZONES.gender[area];
+  if (ZONES && Object.prototype.hasOwnProperty.call(ZONES.gender, zoneOf(area))) {
+    return ZONES.gender[zoneOf(area)];
   }
   if (area.indexOf('בנות') !== -1) return 'בנות';
   if (area.indexOf('בנים') !== -1) return 'בנים';
@@ -145,6 +152,13 @@ function zonesFromPreviousLesson(teacher, day, brk) {
     for (const z of ZONES.byClass[l.cls] || []) zones.add(z);
   }
   return zones.size ? zones : null;
+}
+
+// המתחמים של כיתת האם — מחנכת מועדפת לתורנות באזור הכיתה שלה.
+function zonesOfHomeroom(teacher) {
+  if (!ZONES || !teacher.homeroomOf) return null;
+  const list = ZONES.byClass[teacher.homeroomOf];
+  return (list && list.length) ? new Set(list) : null;
 }
 
 // המגדר שקובע לשיבוץ: קודם לפי הכיתה שלימד בה בשיעור הקודם, אחרת המתחם הקבוע של המורה.
@@ -377,6 +391,7 @@ function assignDuties(model, rules, options = {}) {
   // מתחמי התורנות. כשקיים config/zones.json הם מחליפים את ארבעת האזורים הישנים,
   // ועמדה אחת נפתחת בכל מתחם בכל הפסקה.
   const zonesFile = loadZones();
+  ZONES_ALIAS = {};
   if (zonesFile) {
     const genderOfClass = {};
     for (const c of (model && model.classes) || []) {
@@ -388,10 +403,27 @@ function assignDuties(model, rules, options = {}) {
       gender: buildZoneGender(zonesFile, model),
       kind: buildZoneKind(zonesFile),
     };
-    r.areas = zonesFile.zones.slice();
+    // אם הוגדרו נקודות בתוך מתחם (spotsByZone) — כל נקודה היא עמדת תורנות נפרדת.
+    // מתחם שאינו מופיע שם נשאר עמדה אחת.
+    const spots = zonesFile.spotsByZone || {};
+    const expanded = [];
+    for (const zone of zonesFile.zones) {
+      const list = Array.isArray(spots[zone]) ? spots[zone].filter(Boolean) : [];
+      if (list.length) {
+        for (const s of list) {
+          const label = zone + ' — ' + s;
+          expanded.push(label);
+          ZONES_ALIAS[label] = zone;   // הנקודה יורשת מגדר וסיווג מהמתחם שלה
+        }
+      } else {
+        expanded.push(zone);
+      }
+    }
+    r.areas = expanded;
     if (r.postsPerRegularBreak == null) r.postsPerRegularBreak = r.areas.length;
   } else {
     ZONES = null;
+    ZONES_ALIAS = {};
   }
 
   const teachers = (model && model.teachers) || [];
@@ -697,9 +729,15 @@ function candidateCost(t, slot, state, r, locations) {
 
   // (5) המתחם שבו המורה כבר נמצא פיזית — הכיתה שלימד בה בשיעור שלפני ההפסקה.
   // זה השיקול החזק ביותר אחרי איזון העומס: לא מחצים את בית הספר בשתי דקות.
+  // כשאין שיעור קודם — מחנכת מועדפת לאזור כיתת האם שלה.
   if (!slot.mgmt && ZONES) {
     const near = zonesFromPreviousLesson(t, slot.day, slot.break);
-    if (near && near.has(slot.area)) cost -= 120;
+    if (near) {
+      if (near.has(zoneOf(slot.area))) cost -= 120;
+    } else {
+      const home = zonesOfHomeroom(t);
+      if (home && home.has(zoneOf(slot.area))) cost -= 80;
+    }
   }
 
   // (6) קרבה לכיתות שהמורה מלמד בכלל (locations) — בונוס משני.
