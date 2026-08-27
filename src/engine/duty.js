@@ -309,12 +309,29 @@ function postsForBreak(day, brk, r) {
 }
 
 // ---------- בניית רשימת העמדות (slots) לשיבוץ ----------
+// השיעור האחרון שמתקיים בפועל בכל יום, לפי מערכת השעות.
+// ביום קצר (שישי) אין הפסקה אחרי שיעור שכבר אינו מתקיים.
+function lastPeriodByDay(model) {
+  const out = {};
+  for (const t of (model && model.teachers) || []) {
+    for (const l of t.lessons || []) {
+      if (!Number.isFinite(l.period)) continue;
+      if (out[l.day] == null || l.period > out[l.day]) out[l.day] = l.period;
+    }
+  }
+  return out;
+}
+
 function buildSlots(model, r) {
   const days = (model.meta && model.meta.days) || [];
   const areas = r.areas || [];
   const slots = [];
+  const lastPeriod = lastPeriodByDay(model);
   for (const day of days) {
     for (const brk of r.breaks) {
+      // הפסקה שאחרי שיעור שאינו מתקיים באותו יום — אינה קיימת.
+      const periods = breakToPeriods(brk);
+      if (periods && lastPeriod[day] != null && periods[0] >= lastPeriod[day]) continue;
       // תחילת/סוף יום — עמדות הנהלה (לא חצר/מבנה).
       if (isManagementBreak(brk, r)) {
         const count = (r.stationsOverride && r.stationsOverride[brk] != null) ? r.stationsOverride[brk] : 1;
