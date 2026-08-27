@@ -39,10 +39,10 @@
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
   const STAT_LABELS = {
-    teachers: 'מורים', classes: 'כיתות', yardSlots: 'חלונות מגרש',
+    teachers: 'מורים', classes: 'כיתות',
     dutySlots: 'שיבוצי תורנות', violations: 'הפרות'
   };
-  const STAT_ORDER = ['teachers', 'classes', 'yardSlots', 'dutySlots', 'violations'];
+  const STAT_ORDER = ['teachers', 'classes', 'dutySlots', 'violations'];
 
   const show = (el) => { el.hidden = false; };
   const hide = (el) => { el.hidden = true; };

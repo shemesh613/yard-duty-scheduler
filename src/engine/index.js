@@ -99,7 +99,7 @@ function mergeOverrides(base, user) {
  * מריץ את כל הצינור על קובץ אקסל (buffer או נתיב).
  * @param {Buffer|string} input
  * @param {object} overrides  — עקיפות מטא-דאטה ידניות (config/overrides.json)
- * @returns {{model, yardPlan, dutyPlan, workbookBuffer, html}}
+ * @returns {{model, dutyPlan, workbookBuffer, html, teacherHtml}}
  */
 function runPipeline(input, overrides = {}) {
   const rawLessons = parse.parseWorkbook(input);
@@ -109,15 +109,17 @@ function runPipeline(input, overrides = {}) {
   mergedOverrides = mergeOverrides(mergedOverrides, overrides);
   const model = infer.buildModel(rawLessons, mergedOverrides);
   const rules = loadRules();
-  const yardPlan = yard.assignYard(model, {});
+  // לוח המגרש הוסר: הוא חילק רק ל"חצר בנים"/"חצר בנות" בלי מגרשים ממשיים,
+  // ולא שימש את שיבוץ התורנויות. ראו DECISIONS.md.
+  const yardPlan = null;
   // blocked/pinned מגיעים מהממשק: תורנויות שהוסרו ידנית, ותורנויות לשימור.
   const dutyPlan = duty.assignDuties(model, rules, {
     yardPlan,
     blocked: (overrides && overrides.blocked) || [],
     pinned: (overrides && overrides.pinned) || [],
   });
-  const workbookBuffer = report.buildWorkbook(model, yardPlan, dutyPlan);
-  const html = report.buildHtml(model, yardPlan, dutyPlan);
+  const workbookBuffer = report.buildWorkbook(model, null, dutyPlan);
+  const html = report.buildHtml(model, null, dutyPlan);
   // מסמך נקי להפצה למורים — בלי נתוני בקרה.
   const teacherHtml = report.buildBoardHtml(model, dutyPlan);
   return { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml };
@@ -131,12 +133,11 @@ if (require.main === module) {
   let model, yardPlan, dutyPlan;
   if (arg.endsWith('.json')) {
     model = JSON.parse(fs.readFileSync(arg, 'utf8'));
-    yardPlan = yard.assignYard(model, {});
+    yardPlan = null;
     dutyPlan = duty.assignDuties(model, loadRules(), { yardPlan });
   } else {
     ({ model, yardPlan, dutyPlan } = runPipeline(fs.readFileSync(arg)));
   }
   console.log('מורים:', model.teachers.length, '| כיתות:', model.classes.length);
-  console.log('חלונות מגרש:', yardPlan.slots.length, '| אזהרות:', yardPlan.warnings.length);
   console.log('שיבוצי תורנות:', dutyPlan.assignments.length, '| הפרות:', dutyPlan.violations.length);
 }

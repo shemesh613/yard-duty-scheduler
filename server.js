@@ -76,7 +76,7 @@ app.post('/api/run', upload.single('file'), (req, res) => {
     const overrides = parseOverrides(req.body && req.body.overrides);
     const runPipeline = loadRunPipeline();
     const result = runPipeline(buffer, overrides);
-    const { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml } = result || {};
+    const { model, dutyPlan, workbookBuffer, html, teacherHtml } = result || {};
 
     // שמירת קובץ האקסל לפלט עם מזהה הורדה
     const downloadId = crypto.randomBytes(8).toString('hex');
@@ -92,7 +92,6 @@ app.post('/api/run', upload.single('file'), (req, res) => {
     const summary = {
       teachers: (model && Array.isArray(model.teachers)) ? model.teachers.length : 0,
       classes: (model && Array.isArray(model.classes)) ? model.classes.length : 0,
-      yardSlots: (yardPlan && Array.isArray(yardPlan.slots)) ? yardPlan.slots.length : 0,
       dutySlots: (dutyPlan && Array.isArray(dutyPlan.assignments)) ? dutyPlan.assignments.length : 0,
       violations: (dutyPlan && Array.isArray(dutyPlan.violations)) ? dutyPlan.violations.length : 0
     };

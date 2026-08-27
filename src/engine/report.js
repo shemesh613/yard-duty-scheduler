@@ -1,9 +1,9 @@
 // סוכן 4 — שכבת הייצוא. מייצר קובץ אקסל (xlsx) ותצוגת HTML עברית RTL.
 // בעלות בלעדית על קובץ זה. עומד בחתימות שב-SPEC.md:
-//   module.exports.buildWorkbook(model, yardPlan, dutyPlan) -> Buffer
-//   module.exports.buildHtml(model, yardPlan, dutyPlan)     -> string
+//   module.exports.buildWorkbook(model, _unused, dutyPlan) -> Buffer
+//   module.exports.buildHtml(model, _unused, dutyPlan)     -> string
 //
-// עמיד: אם yardPlan/dutyPlan ריקים או חסרי שדות — לא קורס, מציג "אין נתונים".
+// עמיד: אם dutyPlan ריק או חסר שדות — לא קורס, מציג "אין נתונים".
 // אינו מקודד שמות/ימים קשיח — נגזר מ-model.meta ומהתוכניות עצמן.
 
 const XLSX = require('xlsx');
@@ -181,25 +181,6 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
     XLSX.utils.book_append_sheet(wb, sheetFromAoa(aoa), 'לוח תורנויות');
   }
 
-  /* גיליון 2 — לוח מגרש */
-  {
-    const grid = buildYardGrid(days, yardPlan);
-    const aoa = [];
-    aoa.push(['חלון \\ יום', ...days]);
-    if (!grid.windows.length) {
-      aoa.push([NO_DATA, ...days.map(() => '')]);
-    } else {
-      for (const win of grid.windows) {
-        const row = [win];
-        for (const day of days) {
-          row.push(yardCellText(asObj(grid.cells[win])[day]));
-        }
-        aoa.push(row);
-      }
-    }
-    XLSX.utils.book_append_sheet(wb, sheetFromAoa(aoa), 'לוח מגרש');
-  }
-
   /* גיליון 3 — בקרה */
   {
     const rows = buildControlRows(model, dutyPlan);
@@ -225,8 +206,8 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
 
     // אזהרות מגרש
     aoa.push([]);
-    aoa.push(['אזהרות לוח מגרש (warnings):']);
-    const warnings = asArr(asObj(yardPlan).warnings);
+    aoa.push(['אזהרות:']);
+    const warnings = [];
     if (!warnings.length) aoa.push(['אין אזהרות']);
     else warnings.forEach(w => aoa.push([str(w)]));
 
@@ -334,13 +315,12 @@ function renderList(title, items, cls, emptyMsg) {
 function buildHtml(model, yardPlan, dutyPlan) {
   const days = collectDays(model, yardPlan, dutyPlan);
   const meta = asObj(asObj(model).meta);
-  const school = esc(str(meta.school) || 'מערכת שיבוץ תורנויות חצר ולוח מגרש');
+  const school = esc(str(meta.school) || 'מערכת שיבוץ תורנויות');
 
   const dutyGrid = buildDutyGrid(days, dutyPlan);
-  const yardGrid = buildYardGrid(days, yardPlan);
   const controlRows = buildControlRows(model, dutyPlan);
   const violations = asArr(asObj(dutyPlan).violations).map(str);
-  const warnings = asArr(asObj(yardPlan).warnings).map(str);
+  const warnings = [];
 
   const hasViolations = violations.length > 0;
 
@@ -424,7 +404,7 @@ function buildHtml(model, yardPlan, dutyPlan) {
 
   let body = '';
   body += `<header class="page-head"><h1>${school}</h1>`
-    + `<div class="sub">לוחות שיבוץ — תורנויות חצר, לוח מגרש ובקרה`
+    + `<div class="sub">לוחות שיבוץ — תורנויות ובקרה`
     + (meta.sourceFile ? ` · מקור: ${esc(meta.sourceFile)}` : '')
     + `</div></header>`;
 
@@ -443,17 +423,12 @@ function buildHtml(model, yardPlan, dutyPlan) {
     + '<span class="chip girls">חצר/מבנה בנות</span></div>'
     + '</section>';
 
-  // לוח מגרש
-  body += '<section class="card"><h2>לוח מגרש</h2>'
-    + renderGridTable(days, yardGrid.windows, 'חלון / יום', yardGrid.cells, yardCellHtml, NO_DATA)
-    + `<div class="legend"><span class="star">${HOMEROOM_MARK}</span> = המחנך נוכח בחלון (תא מודגש)</div>`
     + '</section>';
 
   // בקרה
   body += '<section class="card"><h2>בקרה</h2>'
     + renderControlTable(controlRows)
     + renderList('הפרות (violations)', violations, 'violations', 'אין הפרות')
-    + renderList('אזהרות לוח מגרש (warnings)', warnings, 'warnings', 'אין אזהרות')
     + '</section>';
 
   return `<!DOCTYPE html>
