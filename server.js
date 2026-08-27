@@ -76,12 +76,16 @@ app.post('/api/run', upload.single('file'), (req, res) => {
     const overrides = parseOverrides(req.body && req.body.overrides);
     const runPipeline = loadRunPipeline();
     const result = runPipeline(buffer, overrides);
-    const { model, yardPlan, dutyPlan, workbookBuffer, html } = result || {};
+    const { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml } = result || {};
 
     // שמירת קובץ האקסל לפלט עם מזהה הורדה
     const downloadId = crypto.randomBytes(8).toString('hex');
     if (workbookBuffer) {
       fs.writeFileSync(path.join(OUTPUT_DIR, `${downloadId}.xlsx`), workbookBuffer);
+    }
+    // שמירת הלוח למורים לצד האקסל, תחת אותו מזהה.
+    if (teacherHtml) {
+      fs.writeFileSync(path.join(OUTPUT_DIR, `${downloadId}.html`), teacherHtml, 'utf8');
     }
 
     // בניית סיכום מספרים מתוך תוצרי המנוע (לפי החוזה ב-SPEC)
@@ -170,6 +174,16 @@ app.get('/api/download/:id', (req, res) => {
     return res.status(404).send('הקובץ לא נמצא או שפג תוקפו.');
   }
   res.download(filePath, 'לוחות-תורנויות-ומגרש.xlsx');
+});
+
+// GET /api/teachers-sheet/:id → הלוח למורים, נפתח בדפדפן ומשם מדפיסים או שומרים כ-PDF
+app.get('/api/teachers-sheet/:id', (req, res) => {
+  const id = String(req.params.id || '').replace(/[^a-zA-Z0-9]/g, '');
+  const filePath = path.join(OUTPUT_DIR, `${id}.html`);
+  if (!id || !fs.existsSync(filePath)) {
+    return res.status(404).send('הקובץ לא נמצא או שפג תוקפו.');
+  }
+  res.type('html').send(fs.readFileSync(filePath, 'utf8'));
 });
 
 app.listen(PORT, () => {

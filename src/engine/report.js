@@ -470,4 +470,166 @@ ${body}
 </html>`;
 }
 
-module.exports = { buildWorkbook, buildHtml };
+/* =====================================================================
+   לוח למורים — מסמך נקי להדפסה ולהפצה.
+   מכיל רק את מה שמורה צריך: הלוח השבועי, ותורנות אישית לכל אחד.
+   בלי הפרות, בלי נתוני מקור, בלי בקרה.
+   ===================================================================== */
+
+// סדר הצגה קבוע להפסקות, כך שתחילת יום תמיד ראשונה וסוף יום אחרונה.
+function orderBreaks(breaks) {
+  const rank = (b) => {
+    if (b === 'תחילת יום') return -1;
+    if (b === 'סוף יום') return 999;
+    const m = /(\d+)/.exec(b);
+    return m ? parseInt(m[1], 10) : 500;
+  };
+  return breaks.slice().sort((a, b) => rank(a) - rank(b));
+}
+
+// תורנויות פר מורה, ממוינות לפי יום ואז לפי הפסקה.
+function dutiesByTeacher(days, dutyPlan) {
+  const out = {};
+  for (const a of asArr(asObj(dutyPlan).assignments)) {
+    if (!a) continue;
+    const name = str(a.teacherName) || str(a.teacherId);
+    if (!name) continue;
+    (out[name] = out[name] || []).push({
+      day: str(a.day),
+      brk: breakLabel(a),
+      where: str(a.area) || str(a.role),
+      role: str(a.role),
+    });
+  }
+  const dayRank = (d) => { const i = days.indexOf(d); return i === -1 ? 99 : i; };
+  const brkRank = (b) => {
+    if (b === 'תחילת יום') return -1;
+    if (b === 'סוף יום') return 999;
+    const m = /(\d+)/.exec(b);
+    return m ? parseInt(m[1], 10) : 500;
+  };
+  for (const list of Object.values(out)) {
+    list.sort((x, y) => dayRank(x.day) - dayRank(y.day) || brkRank(x.brk) - brkRank(y.brk));
+  }
+  return out;
+}
+
+function buildTeacherHtml(model, dutyPlan) {
+  const days = collectDays(model, null, dutyPlan);
+  const grid = buildDutyGrid(days, dutyPlan);
+  const breaks = orderBreaks(grid.breaks);
+  const byTeacher = dutiesByTeacher(days, dutyPlan);
+  const school = str(asObj(asObj(model).meta).school) || 'לוח תורנויות';
+  const names = Object.keys(byTeacher).sort((a, b) => a.localeCompare(b, 'he'));
+
+  const css = `
+    @page { size: A4; margin: 12mm; }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; padding:24px; background:#fff; color:#1a1a1a;
+      font-family:"Segoe UI","Arial Hebrew",Arial,sans-serif;
+      font-size:14px; line-height:1.5;
+    }
+    .sheet{ max-width:1100px; margin:0 auto; }
+    header{ border-bottom:3px solid #1a1a1a; padding-bottom:12px; margin-bottom:24px; }
+    h1{ margin:0 0 4px; font-size:26px; }
+    header .sub{ color:#666; font-size:13px; }
+    h2{ font-size:19px; margin:0 0 14px; padding-bottom:6px; border-bottom:2px solid #ddd; }
+    section{ margin-bottom:32px; }
+    .table-wrap{ overflow-x:auto; }
+    table{ border-collapse:collapse; width:100%; }
+    th,td{ border:1px solid #c8c8c8; padding:7px 9px; text-align:right; vertical-align:top; }
+    thead th{ background:#f0f0f0; font-size:13px; }
+    tbody th{ background:#f7f7f7; white-space:nowrap; font-size:13px; width:90px; }
+    td{ font-size:12.5px; }
+    td .duty{ display:block; padding:1px 0; }
+    td .where{ color:#666; font-size:11px; }
+    .teachers{ column-count:2; column-gap:28px; }
+    .card{
+      break-inside:avoid; page-break-inside:avoid;
+      border:1px solid #d5d5d5; border-radius:6px;
+      padding:10px 12px; margin:0 0 12px;
+    }
+    .card h3{ margin:0 0 6px; font-size:14.5px; border-bottom:1px solid #e5e5e5; padding-bottom:4px; }
+    .card ul{ margin:0; padding:0; list-style:none; }
+    .card li{ font-size:12.5px; padding:2px 0; display:flex; gap:6px; }
+    .card li .d{ font-weight:600; min-width:44px; }
+    .card li .b{ min-width:58px; color:#444; }
+    .card li .w{ color:#666; }
+    .none{ color:#888; font-style:italic; font-size:12.5px; }
+    footer{ margin-top:28px; padding-top:12px; border-top:1px solid #ddd; color:#777; font-size:12px; }
+    @media print{
+      body{ padding:0; }
+      section{ page-break-inside:auto; }
+      h2{ page-break-after:avoid; }
+      .no-print{ display:none; }
+    }
+    .no-print{
+      margin-bottom:20px; padding:10px 14px; background:#eef3fb;
+      border:1px solid #c3d4ee; border-radius:8px; font-size:13px; color:#24406e;
+    }`;
+
+  const gridRows = breaks.map((brk) => {
+    const cells = days.map((day) => {
+      const list = asObj(grid.cells[brk])[day];
+      if (!list || !list.length) return '<td></td>';
+      const items = list.map((x) => {
+        const where = x.area && x.area !== x.role ? `<span class="where"> · ${esc(x.area)}</span>` : '';
+        return `<span class="duty">${esc(x.name)}${where}</span>`;
+      }).join('');
+      return `<td>${items}</td>`;
+    }).join('');
+    return `<tr><th>${esc(brk)}</th>${cells}</tr>`;
+  }).join('\n');
+
+  const cards = names.map((name) => {
+    const list = byTeacher[name];
+    const items = list.length
+      ? list.map((d) => `<li><span class="d">${esc(d.day.replace('יום ', ''))}</span>`
+          + `<span class="b">${esc(d.brk)}</span>`
+          + `<span class="w">${esc(d.where)}</span></li>`).join('')
+      : '<li class="none">אין תורנויות</li>';
+    return `<div class="card"><h3>${esc(name)}</h3><ul>${items}</ul></div>`;
+  }).join('\n');
+
+  const today = new Date().toLocaleDateString('he-IL');
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>לוח תורנויות למורים</title>
+<style>${css}</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="no-print">להדפסה או לשמירה כ-PDF: Ctrl+P</div>
+
+  <header>
+    <h1>לוח תורנויות שבועי</h1>
+    <div class="sub">${esc(school)} · הופק ב-${esc(today)}</div>
+  </header>
+
+  <section>
+    <h2>הלוח השבועי</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>הפסקה</th>${days.map((d) => `<th>${esc(d)}</th>`).join('')}</tr></thead>
+        <tbody>${gridRows}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>תורנות אישית</h2>
+    <div class="teachers">${cards}</div>
+  </section>
+
+  <footer>לשאלות ולשינויים — פנו להנהלה.</footer>
+</div>
+</body>
+</html>`;
+}
+
+module.exports = { buildWorkbook, buildHtml, buildTeacherHtml };

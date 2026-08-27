@@ -118,7 +118,9 @@ function runPipeline(input, overrides = {}) {
   });
   const workbookBuffer = report.buildWorkbook(model, yardPlan, dutyPlan);
   const html = report.buildHtml(model, yardPlan, dutyPlan);
-  return { model, yardPlan, dutyPlan, workbookBuffer, html };
+  // מסמך נקי להפצה למורים — בלי נתוני בקרה.
+  const teacherHtml = report.buildTeacherHtml(model, dutyPlan);
+  return { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml };
 }
 
 module.exports = { runPipeline, loadRules, loadLocations, loadFileOverrides, deriveGenderOverrides, mergeOverrides };

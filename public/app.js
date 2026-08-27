@@ -25,6 +25,7 @@
   const statsEl = $('stats');
   const htmlPreview = $('htmlPreview');
   const downloadBtn = $('downloadBtn');
+  const teachersBtn = $('teachersBtn');
 
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
@@ -322,10 +323,16 @@
     htmlPreview.innerHTML = data.html || '<p class="muted">אין תצוגה זמינה.</p>';
 
     if (data.downloadId) {
-      downloadBtn.href = '/api/download/' + encodeURIComponent(data.downloadId);
+      const id = encodeURIComponent(data.downloadId);
+      downloadBtn.href = '/api/download/' + id;
       downloadBtn.style.display = '';
+      if (teachersBtn) {
+        teachersBtn.href = '/api/teachers-sheet/' + id;
+        teachersBtn.style.display = '';
+      }
     } else {
       downloadBtn.style.display = 'none';
+      if (teachersBtn) teachersBtn.style.display = 'none';
     }
 
     show(results);

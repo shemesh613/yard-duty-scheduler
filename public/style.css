@@ -240,6 +240,10 @@ body {
 }
 .settings-actions .btn-run { margin-top: 0; }
 
+.download-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-plain { background: #fff; color: var(--primary-dark); border: 1px solid var(--primary-dark); }
+.download-hint { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+
 /* ---- לוח התורנויות עם הסרה ידנית ---- */
 .duties-head {
   display: flex; justify-content: space-between; align-items: center;
