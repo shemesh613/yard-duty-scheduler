@@ -119,7 +119,7 @@ function runPipeline(input, overrides = {}) {
   const workbookBuffer = report.buildWorkbook(model, yardPlan, dutyPlan);
   const html = report.buildHtml(model, yardPlan, dutyPlan);
   // מסמך נקי להפצה למורים — בלי נתוני בקרה.
-  const teacherHtml = report.buildTeacherHtml(model, dutyPlan);
+  const teacherHtml = report.buildBoardHtml(model, dutyPlan);
   return { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml };
 }
 

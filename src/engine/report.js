@@ -514,6 +514,182 @@ function dutiesByTeacher(days, dutyPlan) {
   return out;
 }
 
+/* ---- לוח בפורמט הנהוג בבית הספר ----
+   שורות: תחילת יום, ואז לכל הפסקה — בנות / בנים / דינמיקלאס / מ"מ / סיירת,
+   ולבסוף סיום יום. עמודות: ימי השבוע. */
+
+const DAY_FULL = {
+  'יום א': 'יום ראשון', 'יום ב': 'יום שני', 'יום ג': 'יום שלישי',
+  'יום ד': 'יום רביעי', 'יום ה': 'יום חמישי', 'יום ו': 'יום שישי',
+};
+// שמות ההפסקות כפי שנהוג בבית הספר.
+const BREAK_FULL = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
+
+function breakDisplay(b) { return BREAK_FULL[b] || b; }
+function dayDisplay(d) { return DAY_FULL[d] || d; }
+
+// מגדר המתחם, לפי מגדר רוב הכיתות הסמוכות לו.
+function zoneGenders(model) {
+  let zones;
+  try {
+    zones = JSON.parse(require('fs').readFileSync(
+      require('path').join(__dirname, '..', '..', 'config', 'zones.json'), 'utf8'));
+  } catch (e) { return null; }
+  if (!zones || !zones.zonesByClass) return null;
+
+  const genderOfClass = {};
+  for (const c of asArr(asObj(model).classes)) {
+    if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
+  }
+  const tally = {};
+  for (const [cls, list] of Object.entries(zones.zonesByClass)) {
+    const g = genderOfClass[cls];
+    if (!g) continue;
+    for (const z of list || []) {
+      const acc = tally[z] || (tally[z] = { 'בנים': 0, 'בנות': 0 });
+      acc[g]++;
+    }
+  }
+  const out = {};
+  for (const z of zones.zones || []) {
+    const acc = tally[z];
+    out[z] = acc ? (acc['בנים'] > acc['בנות'] ? 'בנים' : 'בנות') : null;
+  }
+  return out;
+}
+
+// סדר ימי השבוע, ללא תלות בסדר שבו הופיעו בקובץ.
+const DAY_ORDER = ['יום א', 'יום ב', 'יום ג', 'יום ד', 'יום ה', 'יום ו', 'שבת'];
+function sortDays(days) {
+  return days.slice().sort((a, b) => {
+    const i = DAY_ORDER.indexOf(a), j = DAY_ORDER.indexOf(b);
+    return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
+  });
+}
+
+function buildBoardHtml(model, dutyPlan) {
+  const days = sortDays(collectDays(model, null, dutyPlan));
+  const assignments = asArr(asObj(dutyPlan).assignments);
+  const zg = zoneGenders(model) || {};
+  const school = str(asObj(asObj(model).meta).school) || '';
+
+  // רשימת המתחמים לכל מגדר, לפי הסדר שבקובץ המתחמים.
+  const zonesOf = (gender) => Object.keys(zg).filter((z) => zg[z] === gender);
+
+  // ההפסקות הרגילות, בסדר כרונולוגי.
+  const regular = [...new Set(assignments
+    .map((a) => str(a.break))
+    .filter((b) => b && b !== 'תחילת יום' && b !== 'סוף יום'))]
+    .sort((a, b) => {
+      const n = (x) => { const m = /(\d+)/.exec(x); return m ? +m[1] : 99; };
+      return n(a) - n(b);
+    });
+
+  const pick = (day, brk, fn) => assignments
+    .filter((a) => a.day === day && a.break === brk && fn(a))
+    .map((a) => str(a.teacherName));
+
+  const cell = (names) => names.length
+    ? `<td>${names.map((n) => `<span class="nm">${esc(n)}</span>`).join('')}</td>`
+    : '<td class="empty"></td>';
+
+  const rows = [];
+
+  // תחילת יום
+  rows.push(`<tr class="mgmt"><th class="rh">תחילת יום</th><td class="zones"></td>`
+    + days.map((d) => cell(pick(d, 'תחילת יום', () => true))).join('') + '</tr>');
+
+  for (const brk of regular) {
+    const label = breakDisplay(brk);
+
+    for (const gender of ['בנות', 'בנים']) {
+      const zones = zonesOf(gender);
+      const zoneList = zones.map((z) => `<span class="zn">${esc(z)}</span>`).join('');
+      const cells = days.map((d) =>
+        cell(pick(d, brk, (a) => a.area && zg[a.area] === gender))).join('');
+      rows.push(`<tr class="duty ${gender === 'בנים' ? 'boys' : 'girls'}">`
+        + `<th class="rh">${esc(label)} ${gender}</th>`
+        + `<td class="zones">${zoneList}</td>${cells}</tr>`);
+    }
+
+    // דינמיקלאס — רק בימים ובהפסקות שבהם הוא מתקיים.
+    const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס'));
+    if (dyn.some((x) => x.length)) {
+      rows.push('<tr class="sub-row"><th class="rh">דינמיקלאס</th><td class="zones"></td>'
+        + dyn.map(cell).join('') + '</tr>');
+    }
+
+    rows.push('<tr class="sub-row"><th class="rh">מ"מ תורנות</th><td class="zones"></td>'
+      + days.map((d) => cell(pick(d, brk, (a) => a.role === 'מ"מ'))).join('') + '</tr>');
+
+    rows.push(`<tr class="sub-row patrol"><th class="rh">סיירת (${esc(label.replace('הפסקת ', ''))})</th><td class="zones"></td>`
+      + days.map((d) => cell(pick(d, brk, (a) => a.role === 'סייר'))).join('') + '</tr>');
+  }
+
+  // סיום יום
+  rows.push('<tr class="mgmt"><th class="rh">סיום יום</th><td class="zones"></td>'
+    + days.map((d) => cell(pick(d, 'סוף יום', () => true))).join('') + '</tr>');
+
+  const today = new Date().toLocaleDateString('he-IL');
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>לוח תורנויות</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; padding:20px; background:#fff; color:#111;
+    font-family:"Segoe UI","Arial Hebrew",Arial,sans-serif; font-size:13px;
+  }
+  .no-print{
+    margin-bottom:16px; padding:9px 13px; background:#eef3fb;
+    border:1px solid #c3d4ee; border-radius:8px; font-size:13px; color:#24406e;
+  }
+  header{ margin-bottom:14px; }
+  h1{ margin:0 0 3px; font-size:22px; }
+  header .sub{ color:#666; font-size:12px; }
+  .table-wrap{ overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; }
+  th,td{ border:1px solid #999; padding:5px 7px; vertical-align:top; text-align:right; }
+  thead th{ background:#3c3c3c; color:#fff; font-size:13px; text-align:center; padding:7px; }
+  thead th.corner{ background:#3c3c3c; }
+  .rh{ background:#f0f0f0; font-size:12.5px; white-space:nowrap; width:118px; font-weight:600; }
+  .zones{ background:#fafafa; width:170px; font-size:10px; color:#555; line-height:1.35; }
+  .zn{ display:block; }
+  td .nm{ display:block; font-size:11.5px; line-height:1.45; }
+  td.empty{ background:#fcfcfc; }
+  tr.girls .rh{ background:#fce4ee; color:#8c1149; }
+  tr.boys  .rh{ background:#e3f0fc; color:#0d4f8c; }
+  tr.mgmt  .rh{ background:#e8eee8; color:#2c4a2c; }
+  tr.sub-row .rh{ background:#f7f7f7; color:#555; font-weight:500; font-size:11.5px; }
+  tr.sub-row td .nm{ font-size:11px; color:#444; }
+  tr.patrol{ border-bottom:2px solid #999; }
+  footer{ margin-top:16px; color:#777; font-size:11px; }
+  @media print{ body{ padding:0; } .no-print{ display:none; } tr{ page-break-inside:avoid; } }
+</style>
+</head>
+<body>
+  <div class="no-print">להדפסה או לשמירה כ-PDF: Ctrl+P (מומלץ לרוחב)</div>
+  <header>
+    <h1>לוח תורנויות שבועי</h1>
+    <div class="sub">${esc(school)}${school ? ' · ' : ''}הופק ב-${esc(today)}</div>
+  </header>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="corner"></th><th class="corner">מתחמים</th>${
+        days.map((d) => `<th>${esc(dayDisplay(d))}</th>`).join('')}</tr></thead>
+      <tbody>${rows.join('\n')}</tbody>
+    </table>
+  </div>
+  <footer>לשאלות ולשינויים — פנו להנהלה.</footer>
+</body>
+</html>`;
+}
+
 function buildTeacherHtml(model, dutyPlan) {
   const days = collectDays(model, null, dutyPlan);
   const grid = buildDutyGrid(days, dutyPlan);
@@ -632,4 +808,4 @@ function buildTeacherHtml(model, dutyPlan) {
 </html>`;
 }
 
-module.exports = { buildWorkbook, buildHtml, buildTeacherHtml };
+module.exports = { buildWorkbook, buildHtml, buildTeacherHtml, buildBoardHtml };

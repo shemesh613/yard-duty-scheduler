@@ -342,7 +342,13 @@ function buildSlots(model, r) {
       }
       // הפסקה רגילה — N עמדות תורנות מתחלקות בין האזורים (round-robin), + סייר + מ"מ.
       const posts = postsForBreak(day, brk, r);
+      const baseposts = areas.length || (r.postsPerRegularBreak || 6);
       for (let i = 0; i < posts; i++) {
+        // עמדה מעבר למספר המתחמים — עמדת דינמיקלאס (ימי ב׳ ו-ד׳, הפסקות 10 ו-12).
+        if (i >= baseposts) {
+          slots.push({ day, break: brk, area: null, role: 'דינמיקלאס', mgmt: false, dynamic: true, idx: i });
+          continue;
+        }
         const area = areas.length ? areas[i % areas.length] : null;
         slots.push({ day, break: brk, area, role: roleForArea(area), mgmt: false, idx: i });
       }
@@ -441,6 +447,7 @@ function assignDuties(model, rules, options = {}) {
     if (slot.mgmt) st.mgmt++;
     else if (slot.patrol) st.patrol = (st.patrol || 0) + 1;
     else if (slot.substitute) st.sub = (st.sub || 0) + 1;
+    else if (slot.dynamic) st.dynamic = (st.dynamic || 0) + 1;
     else if (isYardArea(slot.area)) st.yard++;
     else st.building++;
     st.total++;
@@ -700,7 +707,10 @@ function candidateCost(t, slot, state, r, locations) {
     cost -= locationBonus(t, slot.area, locations) * 30;
   }
 
-  // (6) שובר שוויון יציב לפי id.
+  // (6) עמדת דינמיקלאס מאוישת בתומכת למידה.
+  if (slot.dynamic && t.type === 'תומכת למידה') cost -= 200;
+
+  // (7) שובר שוויון יציב לפי id.
   cost += idTiebreak(t.id) * 0.001;
 
   return cost;
