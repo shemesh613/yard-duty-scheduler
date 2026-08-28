@@ -147,12 +147,9 @@ function buildModel(rawLessons, overrides = {}) {
     let genderArea = null;
     if (ov.genderArea !== undefined && ov.genderArea !== null) genderArea = ov.genderArea;
 
-    // dayOff: עבור הרב יאיר — יום שבו אינו עובד מסומן כיום חופשי. ניתן לעקיפה.
+    // dayOff — הוראה ידנית בלבד. אין להסיק אותו מהיעדר שיעורים:
+    // לאיש הנהלה יכולים להיות ימים בלי שיעורים והוא עדיין בבית הספר.
     let dayOff = null;
-    if (t.name.includes('יאיר')) {
-      const worked = new Set([...t.days]);
-      dayOff = days.find((d) => !worked.has(d)) || null;
-    }
     if (ov.dayOff !== undefined && ov.dayOff !== null) dayOff = ov.dayOff;
 
     return {
@@ -165,7 +162,7 @@ function buildModel(rawLessons, overrides = {}) {
       noDuty, // מוסק — ניתן לעקיפה
       genderArea, // ניתן לעקיפה
       homeroomOf, // מוסק — ניתן לעקיפה
-      dayOff, // מוסק (יאיר) — ניתן לעקיפה
+      dayOff, // ידני בלבד
       workSpan,
       lessons: t.lessons,
       freeSlots,

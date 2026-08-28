@@ -232,6 +232,8 @@ function withinWorkSpan(teacher, day, brk, r) {
 
 function worksOnDay(teacher, day) {
   if (hasNoSchedule(teacher)) return true; // אין מערכת — נחשב זמין בכל יום
+  // צוות ההנהלה נמצא בבית הספר בכל יום, גם ביום שאין בו שיעורים.
+  if (teacher.type === 'הנהלה') return true;
   if (Array.isArray(teacher.daysWorked) && teacher.daysWorked.length) {
     return teacher.daysWorked.indexOf(day) !== -1;
   }
@@ -555,11 +557,21 @@ function assignDuties(model, rules, options = {}) {
 
     quotasExpected++;
 
+    // תורנויות תחילת יום של הרב הן חובה יומית לפי הכללים, ואינן נספרות במכסה.
+    const isRabbi = rabbis.indexOf(t) !== -1;
+    const mandated = isRabbi
+      ? assignments.filter(a => a.teacherId === t.id && a.break === startBreak).length
+      : 0;
+    const counted = Math.max(0, total - mandated);
+
     // מכסה הושגה? (מאפשרים גמישות: total >= מכסת בסיס. ה-מ"מ הוא בונוס.)
     const base = Math.max(0, baseQuota(t, r));
     const nd = typeof t.numDaysWorked === 'number' ? t.numDaysWorked : (t.daysWorked || []).length;
-    const cappedBase = (nd < (r.minDaysForFullQuota || 3)) ? Math.min(base, r.lowDaysQuotaCap != null ? r.lowDaysQuotaCap : 2) : base;
+    let cappedBase = (nd < (r.minDaysForFullQuota || 3)) ? Math.min(base, r.lowDaysQuotaCap != null ? r.lowDaysQuotaCap : 2) : base;
+    // לאיש הנהלה אין מכסת ימים — הוא בבית הספר כל השבוע.
+    if (t.type === r.managementType) cappedBase = base;
 
+    // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
     if (total < cappedBase) {
       violations.push('מורה "' + t.name + '" (' + t.type + '): שובצו ' + total + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '.');
       quotaOk = false;
@@ -567,9 +579,9 @@ function assignDuties(model, rules, options = {}) {
       quotasMet++;
     }
 
-    // חריגה מעבר למכסה+מ"מ?
-    if (total > expected) {
-      violations.push('מורה "' + t.name + '" שובץ ' + total + ' תורנויות, מעבר למכסה המרבית ' + expected + '.');
+    // חריגה מעבר למכסה+מ"מ? (בלי התורנויות שהכללים מחייבים)
+    if (counted > expected) {
+      violations.push('מורה "' + t.name + '" שובץ ' + counted + ' תורנויות, מעבר למכסה המרבית ' + expected + '.');
       quotaOk = false;
     }
 
