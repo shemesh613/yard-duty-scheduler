@@ -232,8 +232,9 @@ function withinWorkSpan(teacher, day, brk, r) {
 
 function worksOnDay(teacher, day) {
   if (hasNoSchedule(teacher)) return true; // אין מערכת — נחשב זמין בכל יום
-  // צוות ההנהלה נמצא בבית הספר בכל יום, גם ביום שאין בו שיעורים.
-  if (teacher.type === 'הנהלה') return true;
+  // מי שמסומן alwaysPresent נמצא בבית הספר בכל יום, גם ביום בלי שיעורים.
+  // חל על אנשי סגל בודדים בלבד — לא על צוות ההנהלה כולו.
+  if (teacher.alwaysPresent) return true;
   if (Array.isArray(teacher.daysWorked) && teacher.daysWorked.length) {
     return teacher.daysWorked.indexOf(day) !== -1;
   }
@@ -568,8 +569,8 @@ function assignDuties(model, rules, options = {}) {
     const base = Math.max(0, baseQuota(t, r));
     const nd = typeof t.numDaysWorked === 'number' ? t.numDaysWorked : (t.daysWorked || []).length;
     let cappedBase = (nd < (r.minDaysForFullQuota || 3)) ? Math.min(base, r.lowDaysQuotaCap != null ? r.lowDaysQuotaCap : 2) : base;
-    // לאיש הנהלה אין מכסת ימים — הוא בבית הספר כל השבוע.
-    if (t.type === r.managementType) cappedBase = base;
+    // מי שנוכח כל השבוע — כלל "פחות משלושה ימים" אינו חל עליו.
+    if (t.alwaysPresent) cappedBase = base;
 
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
     if (total < cappedBase) {

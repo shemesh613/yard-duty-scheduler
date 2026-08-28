@@ -148,9 +148,13 @@ function buildModel(rawLessons, overrides = {}) {
     if (ov.genderArea !== undefined && ov.genderArea !== null) genderArea = ov.genderArea;
 
     // dayOff — הוראה ידנית בלבד. אין להסיק אותו מהיעדר שיעורים:
-    // לאיש הנהלה יכולים להיות ימים בלי שיעורים והוא עדיין בבית הספר.
+    // ייתכנו ימים בלי שיעורים שבהם המורה עדיין בבית הספר.
     let dayOff = null;
     if (ov.dayOff !== undefined && ov.dayOff !== null) dayOff = ov.dayOff;
+
+    // alwaysPresent — נוכח בכל יום גם בלי שיעורים. נקבע ידנית בלבד,
+    // לאנשי סגל בודדים (ראו DECISIONS.md).
+    const alwaysPresent = ov.alwaysPresent === true;
 
     return {
       id,
@@ -163,6 +167,7 @@ function buildModel(rawLessons, overrides = {}) {
       genderArea, // ניתן לעקיפה
       homeroomOf, // מוסק — ניתן לעקיפה
       dayOff, // ידני בלבד
+      alwaysPresent, // ידני בלבד
       workSpan,
       lessons: t.lessons,
       freeSlots,

@@ -46,7 +46,8 @@
       "type": "הנהלה"
     },
     "בלולו הרב יאיר": {
-      "type": "הנהלה"
+      "type": "הנהלה",
+      "alwaysPresent": true
     },
     "בן דוד אודל": {
       "type": "מורה משלימה תקשורת"
@@ -272,7 +273,11 @@
     },
     "הרב איתמר": {
       "noDuty": true
+    },
+    "הרב יאיר": {
+      "alwaysPresent": true
     }
   },
-  "classes": {}
+  "classes": {},
+  "_alwaysPresentNote": "alwaysPresent — נוכח בבית הספר בכל יום גם בלי שיעורים במערכת. מסומן לאנשי סגל בודדים בלבד, לא לצוות ההנהלה כולו. ראו DECISIONS.md."
 }
