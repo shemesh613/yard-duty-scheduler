@@ -132,16 +132,35 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
     const baseOv = eng.mergeOverrides(locOv, eng.loadFileOverrides());
     const model = infer.buildModel(raw, baseOv);
 
-    const teachers = (model.teachers || []).map((t) => ({
-      name: t.name,
-      type: t.type,
-      noDuty: !!t.noDuty,
-      genderArea: t.genderArea || null,
-      homeroomOf: t.homeroomOf || null,
-      dayOff: t.dayOff || null,
-      numDaysWorked: t.numDaysWorked,
-      rabbi: !!t.rabbi,
-    }));
+    // פילוח השיעורים של כל מורה לפי מגדר הכיתות — כדי להציג במסך את הנתון
+    // שעליו מבוססת ההצעה, ולא רק את המסקנה.
+    const genderOfClass = {};
+    for (const c of model.classes || []) {
+      if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
+    }
+
+    const teachers = (model.teachers || []).map((t) => {
+      let boys = 0, girls = 0;
+      for (const l of t.lessons || []) {
+        const g = genderOfClass[l.cls];
+        if (g === 'בנים') boys++;
+        else if (g === 'בנות') girls++;
+      }
+      const total = boys + girls;
+      return {
+        name: t.name,
+        type: t.type,
+        noDuty: !!t.noDuty,
+        genderArea: t.genderArea || null,
+        boysLessons: boys,
+        girlsLessons: girls,
+        boysPercent: total ? Math.round((boys / total) * 100) : null,
+        homeroomOf: t.homeroomOf || null,
+        dayOff: t.dayOff || null,
+        numDaysWorked: t.numDaysWorked,
+        rabbi: !!t.rabbi,
+      };
+    });
     const classes = (model.classes || []).map((c) => ({
       id: c.id,
       gender: c.gender || null,

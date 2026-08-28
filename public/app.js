@@ -140,6 +140,15 @@
     return `<option value="${value}"${selected ? ' selected' : ''}>${label}</option>`;
   }
 
+  // פילוח השיעורים לפי מגדר — הנתון שעליו מבוססת ההצעה בעמודת המתחם.
+  function genderBreakdown(t) {
+    const total = (t.boysLessons || 0) + (t.girlsLessons || 0);
+    if (!total) return 'אין שיעורים בכיתות';
+    const p = t.boysPercent;
+    const side = p >= 50 ? p + '% בנים' : (100 - p) + '% בנות';
+    return side + ' · ' + t.boysLessons + ' בנים, ' + t.girlsLessons + ' בנות';
+  }
+
   function buildSettings(data) {
     const days = data.meta && data.meta.days ? data.meta.days : [];
 
@@ -159,9 +168,12 @@
         <td class="t-name">${t.name}${t.rabbi ? ' <span class="badge">רב</span>' : ''}</td>
         <td class="t-days">${t.numDaysWorked}</td>
         <td><select class="f-type">${typeOpts}</select></td>
-        <td><select class="f-gender">
-          ${opt('', '—', !t.genderArea)}${opt('בנים', 'בנים', t.genderArea === 'בנים')}${opt('בנות', 'בנות', t.genderArea === 'בנות')}
-        </select></td>
+        <td>
+          <select class="f-gender">
+            ${opt('', 'גמיש — שני המתחמים', !t.genderArea)}${opt('בנים', 'בנים', t.genderArea === 'בנים')}${opt('בנות', 'בנות', t.genderArea === 'בנות')}
+          </select>
+          <span class="gender-breakdown">${genderBreakdown(t)}</span>
+        </td>
         <td class="center"><input type="checkbox" class="f-noduty"${t.noDuty ? ' checked' : ''} /></td>
         <td><select class="f-dayoff">${dayOpts}</select></td>`;
       tb.appendChild(tr);
