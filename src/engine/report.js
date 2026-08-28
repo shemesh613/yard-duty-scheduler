@@ -501,6 +501,17 @@ const DAY_FULL = {
 const BREAK_FULL = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
 
 function breakDisplay(b) { return BREAK_FULL[b] || b; }
+
+// שם לתצוגה בלוח שמופץ לצוות: בלי סימוני המקרא ובלי קידומות פנימיות.
+// "תת אברג'ל רות" -> "אברג'ל רות" · "ת- טמוזרטי ורד (ה)" -> "טמוזרטי ורד"
+function displayName(name) {
+  return str(name)
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 function dayDisplay(d) { return DAY_FULL[d] || d; }
 
 // מגדר המתחם, לפי מגדר רוב הכיתות הסמוכות לו.
@@ -565,7 +576,7 @@ function buildBoardHtml(model, dutyPlan) {
     .map((a) => str(a.teacherName));
 
   const cell = (names) => names.length
-    ? `<td>${names.map((n) => `<span class="nm">${esc(n)}</span>`).join('')}</td>`
+    ? `<td>${names.map((n) => `<span class="nm">${esc(displayName(n))}</span>`).join('')}</td>`
     : '<td class="empty"></td>';
 
   const rows = [];
@@ -726,7 +737,7 @@ function buildTeacherHtml(model, dutyPlan) {
       if (!list || !list.length) return '<td></td>';
       const items = list.map((x) => {
         const where = x.area && x.area !== x.role ? `<span class="where"> · ${esc(x.area)}</span>` : '';
-        return `<span class="duty">${esc(x.name)}${where}</span>`;
+        return `<span class="duty">${esc(displayName(x.name))}${where}</span>`;
       }).join('');
       return `<td>${items}</td>`;
     }).join('');
@@ -740,7 +751,7 @@ function buildTeacherHtml(model, dutyPlan) {
           + `<span class="b">${esc(d.brk)}</span>`
           + `<span class="w">${esc(d.where)}</span></li>`).join('')
       : '<li class="none">אין תורנויות</li>';
-    return `<div class="card"><h3>${esc(name)}</h3><ul>${items}</ul></div>`;
+    return `<div class="card"><h3>${esc(displayName(name))}</h3><ul>${items}</ul></div>`;
   }).join('\n');
 
   const today = new Date().toLocaleDateString('he-IL');
