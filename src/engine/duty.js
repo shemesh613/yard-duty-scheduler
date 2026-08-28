@@ -422,6 +422,13 @@ function assignDuties(model, rules, options = {}) {
   const rabbiKw = r.rabbiNameKeyword;
   const rabbis = teachers.filter(t => rabbiKw && t.name && t.name.indexOf(rabbiKw) !== -1 && !t.noDuty);
 
+  // מורה שנוכח בכל יום חייב יום חופשי מוגדר — אחרת ישובץ גם ביום שאינו בא.
+  for (const t of teachers) {
+    if (!t.alwaysPresent || t.noDuty || t.dayOff) continue;
+    violations.push('חסר יום חופשי: "' + t.name + '" מסומן כנוכח בכל יום, ולכן שובץ '
+      + 'בכל ימי השבוע. יש לקבוע את יומו החופשי במסך ההגדרות.');
+  }
+
   const hasManagement = management.length > 0;
   if (!hasManagement) {
     warnings.push('אזהרה: אין אף מורה מסוג "' + r.managementType + '" — תורנויות תחילת יום/סוף יום לא שובצו (פרט להרב יאיר אם הוגדר).');

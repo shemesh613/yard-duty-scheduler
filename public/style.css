@@ -244,6 +244,14 @@ body {
 }
 .settings-actions .btn-run { margin-top: 0; }
 
+tr.needs-attention { background: #fff6e6; }
+tr.needs-attention:hover { background: #fdefd4; }
+tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
+.must-fill {
+  display: block; margin-top: 3px; font-size: .74rem;
+  color: #a9700f; font-weight: 700;
+}
+
 .gender-breakdown {
   display: block; font-size: .74rem; color: var(--muted);
   margin-top: 3px; white-space: nowrap;
@@ -308,6 +316,8 @@ body {
   padding: 20px;
   font-size: .9rem;
 }
+.site-footer p { margin: 4px 0; }
+.site-footer a { color: var(--primary-dark); }
 
 @media (max-width: 600px) {
   .site-header h1 { font-size: 1.5rem; }

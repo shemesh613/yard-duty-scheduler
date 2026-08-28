@@ -164,6 +164,9 @@
     data.teachers.forEach((t) => {
       const tr = document.createElement('tr');
       tr.dataset.name = t.name;
+      // מורה שנוכח בכל יום חייב יום חופשי מוגדר, אחרת ישובץ גם ביום שאינו בא.
+      const needsDayOff = t.alwaysPresent && !t.dayOff;
+      if (needsDayOff) tr.className = 'needs-attention';
 
       const typeOpts = TEACHER_TYPES
         .map((ty) => opt(ty, ty, ty === t.type)).join('');
@@ -181,7 +184,10 @@
           <span class="gender-breakdown">${genderBreakdown(t)}</span>
         </td>
         <td class="center"><input type="checkbox" class="f-noduty"${t.noDuty ? ' checked' : ''} /></td>
-        <td><select class="f-dayoff">${dayOpts}</select></td>`;
+        <td>
+          <select class="f-dayoff">${dayOpts}</select>
+          ${needsDayOff ? '<span class="must-fill">חובה לסמן</span>' : ''}
+        </td>`;
       tb.appendChild(tr);
     });
 

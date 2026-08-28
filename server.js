@@ -5,6 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { renderDecisions } = require('./src/decisions-page.js');
 
 // טעינת המנוע נעשית בעצלתיים (lazy): ייתכן שמודולי מנוע (למשל duty.js)
 // עדיין נבנים ע"י סוכנים אחרים. אם הטעינה נכשלת — השרת עדיין עולה,
@@ -157,6 +158,7 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
         boysPercent: total ? Math.round((boys / total) * 100) : null,
         homeroomOf: t.homeroomOf || null,
         dayOff: t.dayOff || null,
+        alwaysPresent: !!t.alwaysPresent,
         numDaysWorked: t.numDaysWorked,
         rabbi: !!t.rabbi,
       };
@@ -207,6 +209,16 @@ app.post('/api/save-classes', express.json({ limit: '256kb' }), (req, res) => {
   } catch (err) {
     console.error('שגיאה בשמירת הכיתות:', err && err.stack ? err.stack : err);
     return res.status(500).json({ ok: false, error: 'לא הצלחנו לשמור את ההגדרות.' });
+  }
+});
+
+// GET /decisions → יומן ההחלטות, מוגש כדף קריא בדפדפן.
+app.get('/decisions', (req, res) => {
+  try {
+    const md = fs.readFileSync(path.join(__dirname, 'DECISIONS.md'), 'utf8');
+    res.type('html').send(renderDecisions(md));
+  } catch (err) {
+    res.status(404).send('קובץ התיעוד לא נמצא.');
   }
 });
 
