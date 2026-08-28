@@ -150,10 +150,9 @@
   // פילוח השיעורים לפי מגדר — הנתון שעליו מבוססת ההצעה בעמודת המתחם.
   function genderBreakdown(t) {
     const total = (t.boysLessons || 0) + (t.girlsLessons || 0);
-    if (!total) return 'אין שיעורים בכיתות';
+    if (!total) return '';
     const p = t.boysPercent;
-    const side = p >= 50 ? p + '% בנים' : (100 - p) + '% בנות';
-    return side + ' · ' + t.boysLessons + ' בנים, ' + t.girlsLessons + ' בנות';
+    return p >= 50 ? p + '% בנים' : (100 - p) + '% בנות';
   }
 
   function buildSettings(data) {
