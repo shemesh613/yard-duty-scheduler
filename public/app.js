@@ -123,7 +123,14 @@
       show(settingsSection);
       settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
-      showError('שגיאת תקשורת מול השרת.', (err && err.message) || '');
+      hide(loading);
+      const msg = (err && err.message) || String(err);
+      const network = /Failed to fetch|NetworkError|Load failed/.test(msg);
+      showError(
+        network ? 'לא הצלחנו להגיע לשרת. ודאו שהוא פועל ונסו שוב.'
+                : 'אירעה תקלה בקריאת הקובץ.',
+        msg
+      );
     } finally {
       inspectBtn.disabled = false;
     }
@@ -297,7 +304,16 @@
       }
       renderResults(data);
     } catch (err) {
-      showError('שגיאת תקשורת מול השרת.', (err && err.message) || '');
+      hide(loading);
+      const msg = (err && err.message) || String(err);
+      // הפרדה בין נפילת רשת לבין תקלה בהצגת התוצאה — אחרת כל תקלה
+      // נראית כאילו השרת לא זמין, וזה שולח לכיוון הלא נכון.
+      const network = /Failed to fetch|NetworkError|Load failed|תקינה/.test(msg);
+      showError(
+        network ? 'לא הצלחנו להגיע לשרת. ודאו שהוא פועל ונסו שוב.'
+                : 'הלוח חושב, אך אירעה תקלה בהצגתו.',
+        msg
+      );
     } finally {
       runBtn.disabled = false;
       if (redistributeBtn) redistributeBtn.disabled = false;
