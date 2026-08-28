@@ -27,6 +27,9 @@
   const downloadBtn = $('downloadBtn');
   const teachersBtn = $('teachersBtn');
 
+  const saveClassesBtn = $('saveClassesBtn');
+  const saveClassesMsg = $('saveClassesMsg');
+
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
   const removedNote = $('removedNote');
@@ -197,6 +200,37 @@
       tr.style.display = (!q || tr.dataset.name.includes(q)) ? '' : 'none';
     });
   });
+
+  // שמירת מגדר הכיתות לשנה הנוכחית — נשמר בשרת וחל על כל העלאה הבאה.
+  if (saveClassesBtn) {
+    saveClassesBtn.addEventListener('click', async () => {
+      const genderByClass = {};
+      $('classesTable').querySelectorAll('tbody tr').forEach((tr) => {
+        const g = tr.querySelector('.f-cgender').value;
+        if (g) genderByClass[tr.dataset.id] = g;
+      });
+
+      saveClassesBtn.disabled = true;
+      try {
+        const resp = await fetch('/api/save-classes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ genderByClass }),
+        });
+        const data = await resp.json();
+        saveClassesMsg.textContent = data.ok
+          ? 'נשמר — ' + data.saved + ' כיתות. יחול גם על ההעלאות הבאות.'
+          : (data.error || 'השמירה נכשלה.');
+        saveClassesMsg.className = 'save-msg' + (data.ok ? ' ok' : ' bad');
+      } catch (err) {
+        saveClassesMsg.textContent = 'לא הצלחנו לשמור — בדקו את החיבור לשרת.';
+        saveClassesMsg.className = 'save-msg bad';
+      } finally {
+        show(saveClassesMsg);
+        saveClassesBtn.disabled = false;
+      }
+    });
+  }
 
   // איסוף העקיפות מהטופס
   function collectOverrides() {

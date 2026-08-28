@@ -71,11 +71,20 @@
       </div>
 
       <div id="tab-classes" class="tab-pane" hidden>
+        <p class="tab-note">
+          בבית הספר כיתה 1 בכל שכבה היא בנות וכיתה 3 היא בנים; כיתה 2 וכיתות המקדמות
+          משתנות משנה לשנה. קבעו כאן את החלוקה, ולחצו <strong>שמור לשנה זו</strong> —
+          היא תישמר ותחול על כל העלאה הבאה, עד שתשנו אותה.
+        </p>
         <div class="table-wrap">
           <table class="settings-table" id="classesTable">
             <thead><tr><th>כיתה</th><th>מתחם (בנים/בנות)</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+        <div class="save-row">
+          <button type="button" id="saveClassesBtn" class="btn btn-secondary">שמור לשנה זו</button>
+          <span id="saveClassesMsg" class="save-msg" hidden></span>
         </div>
       </div>
 

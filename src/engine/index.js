@@ -15,6 +15,15 @@ function loadRules() {
   catch { return {}; }
 }
 
+// מגדר הכיתות לשנה הנוכחית — המקור הקובע, גובר על כל זיהוי אוטומטי.
+const classesPath = path.join(__dirname, '..', '..', 'config', 'classes.json');
+function loadClassGenders() {
+  try {
+    const c = JSON.parse(fs.readFileSync(classesPath, 'utf8'));
+    return (c && c.genderByClass) || {};
+  } catch { return {}; }
+}
+
 const locationsPath = path.join(__dirname, '..', '..', 'config', 'locations.json');
 function loadLocations() {
   try { return JSON.parse(fs.readFileSync(locationsPath, 'utf8')); }
@@ -54,8 +63,10 @@ function inferGenderFromLessons(lessons) {
 function deriveGenderOverrides(rawLessons, locations) {
   const lessonsAll = Array.isArray(rawLessons) ? rawLessons : [];
   const inferred = inferGenderFromLessons(lessonsAll);
-  const known = (locations && locations._genderByClass) || {};
-  const g = { ...inferred, ...known }; // קובץ המיקומים גובר על ההסקה
+  // סדר הקדימות: config/classes.json (מה שההנהלה קבעה לשנה זו) גובר על ההסקה.
+  // config/locations.json אינו משמש עוד למגדר — הוא של שנה קודמת והכיתות זזו.
+  const declared = loadClassGenders();
+  const g = { ...inferred, ...declared };
   if (!Object.keys(g).length) return { teachers: {}, classes: {} };
   const classes = {};
   const teachers = {};
@@ -125,7 +136,7 @@ function runPipeline(input, overrides = {}) {
   return { model, yardPlan, dutyPlan, workbookBuffer, html, teacherHtml };
 }
 
-module.exports = { runPipeline, loadRules, loadLocations, loadFileOverrides, deriveGenderOverrides, mergeOverrides };
+module.exports = { runPipeline, loadRules, loadLocations, loadClassGenders, loadFileOverrides, deriveGenderOverrides, mergeOverrides };
 
 // הרצה ישירה לבדיקה: node src/engine/index.js [model.sample.json|file.xlsx]
 if (require.main === module) {

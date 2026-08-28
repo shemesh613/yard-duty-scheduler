@@ -164,6 +164,33 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
   }
 });
 
+// POST /api/save-classes — שמירת מגדר הכיתות לשנה הנוכחית.
+// נכתב ל-config/classes.json ומשם גובר על כל זיהוי אוטומטי בהעלאות הבאות.
+app.post('/api/save-classes', express.json({ limit: '256kb' }), (req, res) => {
+  try {
+    const incoming = (req.body && req.body.genderByClass) || {};
+    const clean = {};
+    for (const [cls, g] of Object.entries(incoming)) {
+      if (g !== 'בנים' && g !== 'בנות') continue;
+      const id = String(cls).trim();
+      if (id) clean[id] = g;
+    }
+
+    const p = path.join(__dirname, 'config', 'classes.json');
+    let current = {};
+    try { current = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { /* קובץ חדש */ }
+
+    current.genderByClass = clean;
+    current._updated = new Date().toISOString().slice(0, 10);
+    fs.writeFileSync(p, JSON.stringify(current, null, 2) + String.fromCharCode(10), 'utf8');
+
+    return res.json({ ok: true, saved: Object.keys(clean).length });
+  } catch (err) {
+    console.error('שגיאה בשמירת הכיתות:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ ok: false, error: 'לא הצלחנו לשמור את ההגדרות.' });
+  }
+});
+
 // GET /api/download/:id → הורדת קובץ האקסל מ-output/
 app.get('/api/download/:id', (req, res) => {
   // אבטחה: רק תווים מותרים במזהה כדי למנוע מעבר נתיב

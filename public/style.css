@@ -240,6 +240,15 @@ body {
 }
 .settings-actions .btn-run { margin-top: 0; }
 
+.tab-note {
+  background: #f4f7fc; border: 1px solid #d7e2f2; border-radius: 8px;
+  padding: 10px 13px; font-size: .88rem; color: #3b4a63; margin: 0 0 14px;
+}
+.save-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.save-msg { font-size: .88rem; }
+.save-msg.ok { color: #2e7d32; }
+.save-msg.bad { color: #c62828; }
+
 .download-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .btn-plain { background: #fff; color: var(--primary-dark); border: 1px solid var(--primary-dark); }
 .download-hint { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
