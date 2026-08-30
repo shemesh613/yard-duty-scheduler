@@ -252,6 +252,12 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   color: #a9700f; font-weight: 700;
 }
 
+.results-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.results-head h2 { margin: 0; }
+
 .add-row {
   display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;
 }

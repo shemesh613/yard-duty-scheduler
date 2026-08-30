@@ -30,6 +30,8 @@
   const saveClassesBtn = $('saveClassesBtn');
   const saveClassesMsg = $('saveClassesMsg');
 
+  const restartBtn = $('restartBtn');
+
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
   const removedNote = $('removedNote');
@@ -233,6 +235,38 @@
       tr.style.display = (!q || tr.dataset.name.includes(q)) ? '' : 'none';
     });
   });
+
+  // חזרה לדף ההעלאה. כל מה שנעשה ידנית על הלוח הנוכחי יאבד, ולכן נדרש אישור.
+  if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+      const manual = removed.length + manualPins.length
+        + extraTeachers.length + removedTeachers.length;
+      const NL = String.fromCharCode(10);
+      let msg = 'לחזור להעלאת קובץ חדש?' + NL + NL;
+      if (manual) {
+        msg += 'שימו לב: יש ' + manual + ' שינויים ידניים בלוח הנוכחי —'
+          + ' החלפות, הסרות ותוספות של מורים.' + NL
+          + 'כל אלה יימחקו ולא ניתן יהיה לשחזר אותם.' + NL + NL;
+      } else {
+        msg += 'הלוח הנוכחי והתוצאות שעל המסך יימחקו.' + NL + NL;
+      }
+      msg += 'אם עדיין לא הורדתם את הקובץ למורים — הורידו לפני שתמשיכו.';
+      if (!confirm(msg)) return;
+
+      removed = [];
+      manualPins = [];
+      extraTeachers = [];
+      removedTeachers = [];
+      assignments = [];
+      inspectData = null;
+      resetFile();
+      hide(results);
+      hide(settingsSection);
+      hide(errorBox);
+      show(uploadSection);
+      uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
 
   // --- הוספה והסרה של מורים ---
 
