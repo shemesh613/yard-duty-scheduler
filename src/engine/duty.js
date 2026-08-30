@@ -686,6 +686,16 @@ function eligibleForDuty(slot, teachers, state, r) {
   return out;
 }
 
+// כמה ימים בשבוע המורה זמין לתורנות.
+// מי שאין עליו נתון זמין בכל יום, ולכן נספר כמלוא ימי הלימוד — לא כאפס.
+function availableDayCount(teacher, r) {
+  const week = (r && r._weekDays) || 6;
+  if (teacher.alwaysPresent) return week - (teacher.dayOff ? 1 : 0);
+  const days = Array.isArray(teacher.daysWorked) ? teacher.daysWorked : [];
+  if (!days.length) return week;
+  return teacher.dayOff ? Math.max(1, days.length - 1) : days.length;
+}
+
 // ---------- פונקציית ניקוד מועמד (קטן יותר = עדיף) ----------
 // משמשת ל-sort: comparator שמחזיר שלילי אם a עדיף על b.
 function scoreCandidate(a, b, slot, state, r, locations) {
@@ -731,7 +741,11 @@ function candidateCost(t, slot, state, r, locations) {
   // (6) עמדת דינמיקלאס מאוישת בתומכת למידה.
   if (slot.dynamic && t.type === 'תומכת למידה') cost -= 200;
 
-  // (7) שובר שוויון יציב לפי id.
+  // (7) מי שזמין בפחות ימים מקבל עדיפות — יש לו פחות הזדמנויות בשבוע,
+  // ובלי זה הוא מפסיד כל תחרות ונשאר בלי תורנויות.
+  cost += availableDayCount(t, r) * 12;
+
+  // (8) שובר שוויון יציב לפי id.
   cost += idTiebreak(t.id) * 0.001;
 
   return cost;
