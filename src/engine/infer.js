@@ -94,10 +94,19 @@ function buildModel(rawLessons, overrides = {}) {
   }
 
   // מורים שנוספו ידנית בממשק ואינם בקובץ השעות כלל.
-  for (const name of (overrides && overrides.extraTeachers) || []) {
-    const n = String(name || '').trim();
+  // כל רשומה היא שם, או { name, days: [...] } עם ימי העבודה שנבחרו.
+  for (const entry of (overrides && overrides.extraTeachers) || []) {
+    const n = String((entry && entry.name) || entry || '').trim();
     if (!n || tmap[n]) continue;
-    tmap[n] = { name: n, days: new Set(), classCount: {}, lessons: [], byDay: {} };
+    const chosen = (entry && Array.isArray(entry.days)) ? entry.days.filter(Boolean) : [];
+    tmap[n] = {
+      name: n,
+      days: new Set(chosen),
+      classCount: {},
+      lessons: [],
+      byDay: {},
+      manualDays: chosen.length > 0,
+    };
   }
 
   // מורים שהוסרו ידנית בממשק — אינם נכללים בשיבוץ כלל.
@@ -175,6 +184,7 @@ function buildModel(rawLessons, overrides = {}) {
       rabbi: t.name.includes('הרב'),
       daysWorked: [...t.days],
       numDaysWorked: t.days.size,
+      manualDays: !!t.manualDays, // ימי עבודה שנבחרו ידנית
       noDuty, // מוסק — ניתן לעקיפה
       genderArea, // ניתן לעקיפה
       homeroomOf, // מוסק — ניתן לעקיפה

@@ -199,9 +199,10 @@ function effectiveQuota(teacher, r) {
   const nd = typeof teacher.numDaysWorked === 'number'
     ? teacher.numDaysWorked
     : (Array.isArray(teacher.daysWorked) ? teacher.daysWorked.length : 0);
-  // כלל "פחות משלושה ימים" חל רק כשידוע כמה ימים המורה עובד.
-  // מורה בלי מערכת כלל — אין נתון, ולכן מקבל מכסה מלאה.
-  if (!hasNoSchedule(teacher) && nd < (r.minDaysForFullQuota || 3)) {
+  // כלל "פחות משלושה ימים" חל רק כשידוע כמה ימים המורה עובד — מהמערכת
+  // או מבחירה ידנית. מורה בלי נתון כלל מקבל מכסה מלאה.
+  const daysKnown = !hasNoSchedule(teacher) || teacher.manualDays;
+  if (daysKnown && nd < (r.minDaysForFullQuota || 3)) {
     q = Math.min(q, r.lowDaysQuotaCap != null ? r.lowDaysQuotaCap : 2);
   }
   return Math.max(0, q);
@@ -231,13 +232,13 @@ function withinWorkSpan(teacher, day, brk, r) {
 }
 
 function worksOnDay(teacher, day) {
-  if (hasNoSchedule(teacher)) return true; // אין מערכת — נחשב זמין בכל יום
   // מי שמסומן alwaysPresent נמצא בבית הספר בכל יום, גם ביום בלי שיעורים.
   // חל על אנשי סגל בודדים בלבד — לא על צוות ההנהלה כולו.
   if (teacher.alwaysPresent) return true;
   if (Array.isArray(teacher.daysWorked) && teacher.daysWorked.length) {
     return teacher.daysWorked.indexOf(day) !== -1;
   }
+  if (hasNoSchedule(teacher)) return true; // אין מערכת ולא נבחרו ימים — זמין בכל יום
   return !!(teacher.workSpan && teacher.workSpan[day]);
 }
 

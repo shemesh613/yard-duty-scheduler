@@ -57,16 +57,23 @@
           <strong>מתחם קבוע</strong> — איפה המורה בדרך כלל, לפי אחוז השיעורים שלו.
           משמש רק כשאין לו שיעור צמוד להפסקה; אם יש, המערכת משבצת אותו ליד הכיתה שלימד.
         </p>
-        <div class="add-row">
-          <input type="text" id="newTeacherName" placeholder="שם מורה חדש..." />
-          <select id="newTeacherType">
-            <option value="מורה מקצועי">מורה מקצועי</option>
-            <option value="מחנכת">מחנכת</option>
-            <option value="תומכת למידה">תומכת למידה</option>
-            <option value="מורה משלימה תקשורת">מורה משלימה תקשורת</option>
-            <option value="הנהלה">הנהלה</option>
-          </select>
-          <button type="button" id="addTeacherBtn" class="btn btn-secondary">הוסף מורה</button>
+        <div class="add-box">
+          <div class="add-row">
+            <input type="text" id="newTeacherName" placeholder="שם מורה חדש..." />
+            <select id="newTeacherType">
+              <option value="מורה מקצועי">מורה מקצועי</option>
+              <option value="מחנכת">מחנכת</option>
+              <option value="תומכת למידה">תומכת למידה</option>
+              <option value="מורה משלימה תקשורת">מורה משלימה תקשורת</option>
+              <option value="הנהלה">הנהלה</option>
+            </select>
+            <button type="button" id="addTeacherBtn" class="btn btn-secondary">הוסף מורה</button>
+          </div>
+          <div class="add-days">
+            <span class="add-days-label">ימי עבודה:</span>
+            <span id="newTeacherDays"></span>
+            <span class="add-days-hint">בלי בחירה — זמין בכל יום</span>
+          </div>
         </div>
         <div class="table-wrap">
           <table class="settings-table" id="teachersTable">

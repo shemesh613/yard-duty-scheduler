@@ -161,9 +161,25 @@
     return p >= 50 ? p + '% בנים' : (100 - p) + '% בנות';
   }
 
+  const DAY_ORDER = ['יום א', 'יום ב', 'יום ג', 'יום ד', 'יום ה', 'יום ו'];
+  function orderDays(days) {
+    return days.slice().sort((a, b) => {
+      const i = DAY_ORDER.indexOf(a), j = DAY_ORDER.indexOf(b);
+      return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
+    });
+  }
+
   function buildSettings(data) {
-    const days = data.meta && data.meta.days ? data.meta.days : [];
+    const days = orderDays(data.meta && data.meta.days ? data.meta.days : []);
     allTeacherNames = data.teachers.map((t) => t.name);
+
+    // תיבות בחירת ימים למורה חדש
+    const dayBox = $('newTeacherDays');
+    if (dayBox && !dayBox.childElementCount) {
+      dayBox.innerHTML = days.map((d) =>
+        `<label class="day-pick"><input type="checkbox" value="${d}"> ${d.replace('יום ', '')}</label>`
+      ).join('');
+    }
 
     // מורים
     const tb = $('teachersTable').querySelector('tbody');
@@ -281,15 +297,18 @@
         return;
       }
       const type = $('newTeacherType').value;
-      extraTeachers.push(name);
+      const chosenDays = [...$('newTeacherDays').querySelectorAll('input:checked')]
+        .map((c) => c.value);
+      extraTeachers.push({ name, days: chosenDays });
       inspectData.teachers.push({
         name, type, noDuty: false, genderArea: null,
         boysLessons: 0, girlsLessons: 0, boysPercent: null,
-        homeroomOf: null, dayOff: null, numDaysWorked: 0, rabbi: false,
+        homeroomOf: null, dayOff: null, numDaysWorked: chosenDays.length, rabbi: false,
         alwaysPresent: false, isNew: true,
       });
       buildSettings(inspectData);
       input.value = '';
+      $('newTeacherDays').querySelectorAll('input:checked').forEach((c) => { c.checked = false; });
     });
   }
 
@@ -299,8 +318,8 @@
     if (!btn) return;
     const name = btn.dataset.name;
     if (!confirm('להסיר את "' + name + '" מהשיבוץ? הוא לא יקבל תורנויות כלל בחישוב הזה.')) return;
-    if (extraTeachers.indexOf(name) !== -1) {
-      extraTeachers = extraTeachers.filter((n) => n !== name);
+    if (extraTeachers.some((t) => t.name === name)) {
+      extraTeachers = extraTeachers.filter((t) => t.name !== name);
     } else {
       removedTeachers.push(name);
     }
