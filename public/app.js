@@ -36,8 +36,12 @@
 
   let selectedFile = null;
   let inspectData = null;
-  let assignments = [];   // השיבוצים מההרצה האחרונה
-  let removed = [];       // תורנויות שהוסרו ידנית: {teacher, day, break}
+  let assignments = [];        // השיבוצים מההרצה האחרונה
+  let removed = [];            // תורנויות שהוסרו ידנית: {teacher, day, break}
+  let extraTeachers = [];      // מורים שנוספו ידנית ואינם בקובץ
+  let removedTeachers = [];    // מורים שהוסרו ידנית
+  let allTeacherNames = [];    // לרשימת הבחירה בהחלפת תורן
+  let manualPins = [];         // שיבוצים שנקבעו ידנית ויש לשמרם
 
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
@@ -157,6 +161,7 @@
 
   function buildSettings(data) {
     const days = data.meta && data.meta.days ? data.meta.days : [];
+    allTeacherNames = data.teachers.map((t) => t.name);
 
     // מורים
     const tb = $('teachersTable').querySelector('tbody');
@@ -174,7 +179,7 @@
         .concat(days.map((d) => opt(d, d, d === t.dayOff))).join('');
 
       tr.innerHTML = `
-        <td class="t-name">${t.name}${t.rabbi ? ' <span class="badge">רב</span>' : ''}</td>
+        <td class="t-name">${t.name}${t.rabbi ? ' <span class="badge">רב</span>' : ''}${t.isNew ? ' <span class="badge badge-new">נוסף</span>' : ''}</td>
         <td class="t-days">${t.numDaysWorked}</td>
         <td><select class="f-type">${typeOpts}</select></td>
         <td>
@@ -187,6 +192,10 @@
         <td>
           <select class="f-dayoff">${dayOpts}</select>
           ${needsDayOff ? '<span class="must-fill">חובה לסמן</span>' : ''}
+        </td>
+        <td class="center">
+          <button type="button" class="btn-remove btn-drop-teacher"
+                  data-name="${t.name}" title="הסר מהשיבוץ">הסר</button>
         </td>`;
       tb.appendChild(tr);
     });
@@ -223,6 +232,46 @@
     $('teachersTable').querySelectorAll('tbody tr').forEach((tr) => {
       tr.style.display = (!q || tr.dataset.name.includes(q)) ? '' : 'none';
     });
+  });
+
+  // --- הוספה והסרה של מורים ---
+
+  const addTeacherBtn = $('addTeacherBtn');
+  if (addTeacherBtn) {
+    addTeacherBtn.addEventListener('click', () => {
+      const input = $('newTeacherName');
+      const name = (input.value || '').trim();
+      if (!name) { input.focus(); return; }
+      if (allTeacherNames.indexOf(name) !== -1) {
+        alert('המורה "' + name + '" כבר קיים ברשימה.');
+        return;
+      }
+      const type = $('newTeacherType').value;
+      extraTeachers.push(name);
+      inspectData.teachers.push({
+        name, type, noDuty: false, genderArea: null,
+        boysLessons: 0, girlsLessons: 0, boysPercent: null,
+        homeroomOf: null, dayOff: null, numDaysWorked: 0, rabbi: false,
+        alwaysPresent: false, isNew: true,
+      });
+      buildSettings(inspectData);
+      input.value = '';
+    });
+  }
+
+  // הסרת מורה מהשיבוץ
+  $('teachersTable').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-drop-teacher');
+    if (!btn) return;
+    const name = btn.dataset.name;
+    if (!confirm('להסיר את "' + name + '" מהשיבוץ? הוא לא יקבל תורנויות כלל בחישוב הזה.')) return;
+    if (extraTeachers.indexOf(name) !== -1) {
+      extraTeachers = extraTeachers.filter((n) => n !== name);
+    } else {
+      removedTeachers.push(name);
+    }
+    inspectData.teachers = inspectData.teachers.filter((t) => t.name !== name);
+    buildSettings(inspectData);
   });
 
   // שמירת מגדר הכיתות לשנה הנוכחית — נשמר בשרת וחל על כל העלאה הבאה.
@@ -287,12 +336,15 @@
     try {
       const overrides = collectOverrides();
       overrides.blocked = removed;
+      overrides.extraTeachers = extraTeachers;
+      overrides.removedTeachers = removedTeachers;
       if (keepRest) {
         const isRemoved = (a) => removed.some((b) =>
           b.teacher === a.teacherName && b.day === a.day && b.break === a.break);
-        overrides.pinned = assignments.filter((a) => !isRemoved(a)).map((a) => ({
-          teacher: a.teacherName, day: a.day, break: a.break, area: a.area, role: a.role,
-        }));
+        overrides.pinned = manualPins.concat(
+          assignments.filter((a) => !isRemoved(a)).map((a) => ({
+            teacher: a.teacherName, day: a.day, break: a.break, area: a.area, role: a.role,
+          })));
       }
 
       const fd = new FormData();
@@ -327,6 +379,7 @@
 
   runBtn.addEventListener('click', () => {
     removed = [];
+    manualPins = [];
     assignments = [];
     hide(results);
     computePlan(false);
@@ -349,8 +402,12 @@
         <td>${a.break}</td>
         <td>${a.area || a.role}</td>
         <td class="t-name">${a.teacherName}</td>
-        <td class="center"><button type="button" class="btn-remove" data-idx="${i}"
-              title="הסר את התורן הזה ומצא אחר">הסר</button></td>`;
+        <td class="center">
+          <button type="button" class="btn-swap" data-idx="${i}"
+                  title="החלף לתורן אחר">החלף</button>
+          <button type="button" class="btn-remove" data-idx="${i}"
+                  title="הסר ומצא מחליף אוטומטית">הסר</button>
+        </td>`;
       tb.appendChild(tr);
     });
 
@@ -365,13 +422,67 @@
 
   // הסרת תורן — המערכת תמצא מחליף לאותה הפסקה, ושאר הלוח נשמר.
   dutiesTable.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-remove');
-    if (!btn) return;
-    const a = assignments[Number(btn.dataset.idx)];
-    if (!a) return;
-    removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
-    computePlan(true);
+    const removeBtn = e.target.closest('.btn-remove');
+    if (removeBtn) {
+      const a = assignments[Number(removeBtn.dataset.idx)];
+      if (!a) return;
+      const where = a.day + ', ' + a.break + (a.area ? ', ' + a.area : ', ' + a.role);
+      if (!confirm('להסיר את ' + a.teacherName + ' מ' + where + '?'
+        + ' המערכת תמצא תורן אחר לעמדה, ושאר הלוח יישמר.')) return;
+      removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+      computePlan(true);
+      return;
+    }
+
+    const swapBtn = e.target.closest('.btn-swap');
+    if (swapBtn) openSwap(Number(swapBtn.dataset.idx));
   });
+
+  // --- החלפה ידנית של תורן ---
+
+  // מי פנוי לאותה עמדה: כל מי שאינו משובץ כבר באותו יום ואותה הפסקה.
+  function availableFor(a) {
+    const busy = new Set(assignments
+      .filter((x) => x.day === a.day && x.break === a.break)
+      .map((x) => x.teacherName));
+    return allTeacherNames.filter((n) => !busy.has(n)).sort((x, y) => x.localeCompare(y, 'he'));
+  }
+
+  function openSwap(idx) {
+    const a = assignments[idx];
+    if (!a) return;
+    const row = dutiesTable.querySelectorAll('tbody tr')[idx];
+    if (!row || row.querySelector('.swap-box')) return;
+
+    const options = availableFor(a);
+    if (!options.length) {
+      alert('אין מורה פנוי אחר להפסקה הזו.');
+      return;
+    }
+
+    const cell = row.querySelector('td:last-child');
+    const box = document.createElement('div');
+    box.className = 'swap-box';
+    box.innerHTML = `
+      <select class="swap-pick">${options.map((n) => `<option>${n}</option>`).join('')}</select>
+      <button type="button" class="btn-swap-ok">אישור</button>
+      <button type="button" class="btn-swap-cancel">ביטול</button>`;
+    cell.appendChild(box);
+
+    box.querySelector('.btn-swap-cancel').addEventListener('click', () => box.remove());
+    box.querySelector('.btn-swap-ok').addEventListener('click', () => {
+      const to = box.querySelector('.swap-pick').value;
+      const where = a.day + ', ' + a.break + (a.area ? ', ' + a.area : ', ' + a.role);
+      if (!confirm('להחליף ב' + where + '?' + String.fromCharCode(10)
+        + 'במקום: ' + a.teacherName + String.fromCharCode(10)
+        + 'לשבץ: ' + to)) return;
+
+      // המורה היוצא נחסם מהעמדה, והנכנס ננעץ אליה. שאר הלוח נשמר.
+      removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+      manualPins.push({ teacher: to, day: a.day, break: a.break, area: a.area, role: a.role });
+      computePlan(true);
+    });
+  }
 
   function renderResults(data) {
     statsEl.innerHTML = '';

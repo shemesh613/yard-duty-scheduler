@@ -134,6 +134,67 @@ function buildControlRows(model, dutyPlan) {
   return rows;
 }
 
+const DAY_FULL = {
+  'יום א': 'יום ראשון', 'יום ב': 'יום שני', 'יום ג': 'יום שלישי',
+  'יום ד': 'יום רביעי', 'יום ה': 'יום חמישי', 'יום ו': 'יום שישי',
+};
+// שמות ההפסקות כפי שנהוג בבית הספר.
+const BREAK_FULL = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
+
+function breakDisplay(b) { return BREAK_FULL[b] || b; }
+
+// שם לתצוגה בלוח שמופץ לצוות: בלי סימוני המקרא ובלי קידומות פנימיות.
+// "תת אברג'ל רות" -> "אברג'ל רות" · "ת- טמוזרטי ורד (ה)" -> "טמוזרטי ורד"
+function displayName(name) {
+  return str(name)
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+function dayDisplay(d) { return DAY_FULL[d] || d; }
+
+// מגדר המתחם, לפי מגדר רוב הכיתות הסמוכות לו.
+function zoneGenders(model) {
+  let zones;
+  try {
+    zones = JSON.parse(require('fs').readFileSync(
+      require('path').join(__dirname, '..', '..', 'config', 'zones.json'), 'utf8'));
+  } catch (e) { return null; }
+  if (!zones || !zones.zonesByClass) return null;
+
+  const genderOfClass = {};
+  for (const c of asArr(asObj(model).classes)) {
+    if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
+  }
+  const tally = {};
+  for (const [cls, list] of Object.entries(zones.zonesByClass)) {
+    const g = genderOfClass[cls];
+    if (!g) continue;
+    for (const z of list || []) {
+      const acc = tally[z] || (tally[z] = { 'בנים': 0, 'בנות': 0 });
+      acc[g]++;
+    }
+  }
+  const out = {};
+  for (const z of zones.zones || []) {
+    const acc = tally[z];
+    out[z] = acc ? (acc['בנים'] > acc['בנות'] ? 'בנים' : 'בנות') : null;
+  }
+  return out;
+}
+
+// סדר ימי השבוע, ללא תלות בסדר שבו הופיעו בקובץ.
+const DAY_ORDER = ['יום א', 'יום ב', 'יום ג', 'יום ד', 'יום ה', 'יום ו', 'שבת'];
+function sortDays(days) {
+  return days.slice().sort((a, b) => {
+    const i = DAY_ORDER.indexOf(a), j = DAY_ORDER.indexOf(b);
+    return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
+  });
+}
+
+
 /* ------------------------------- אקסל ------------------------------- */
 
 function dutyCellText(list) {
@@ -158,60 +219,145 @@ function sheetFromAoa(aoa) {
   return ws;
 }
 
+// סדר תצוגה של תפקידי התורנות.
+const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'דינמיקלאס', 'סייר', 'מ"מ', 'סוף יום'];
+
+// כל השיבוצים כרשומות שטוחות, ממוינות לפי יום ואז הפסקה ואז תפקיד.
+function flatAssignments(model, dutyPlan) {
+  const days = sortDays(collectDays(model, null, dutyPlan));
+  const dayRank = (d) => { const i = days.indexOf(d); return i === -1 ? 99 : i; };
+  const brkRank = (b) => {
+    if (b === 'תחילת יום') return -1;
+    if (b === 'סוף יום') return 999;
+    const m = /(\d+)/.exec(b);
+    return m ? parseInt(m[1], 10) : 500;
+  };
+  const roleRank = (r) => {
+    const i = ROLE_ORDER.indexOf(r);
+    return i === -1 ? 50 : i;
+  };
+
+  return asArr(asObj(dutyPlan).assignments)
+    .filter(Boolean)
+    .map((a) => ({
+      day: str(a.day),
+      brk: breakLabel(a),
+      role: str(a.role),
+      area: str(a.area),
+      name: displayName(a.teacherName || a.teacherId),
+    }))
+    .sort((x, y) =>
+      dayRank(x.day) - dayRank(y.day)
+      || brkRank(x.brk) - brkRank(y.brk)
+      || roleRank(x.role) - roleRank(y.role)
+      || str(x.name).localeCompare(str(y.name), 'he'));
+}
+
+function sheetWithWidths(aoa, widths) {
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = widths.map((w) => ({ wch: w }));
+  if (aoa.length > 1) ws['!autofilter'] = { ref: XLSX.utils.encode_range({
+    s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: aoa[0].length - 1 } }) };
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  return ws;
+}
+
 function buildWorkbook(model, yardPlan, dutyPlan) {
   const wb = XLSX.utils.book_new();
-  const days = collectDays(model, yardPlan, dutyPlan);
+  const days = sortDays(collectDays(model, null, dutyPlan));
+  const flat = flatAssignments(model, dutyPlan);
+  const zg = zoneGenders(model) || {};
 
-  /* גיליון 1 — לוח תורנויות */
+  /* גיליון 1 — לפי ימים: שורה לכל תורנות, ניתן למיון וסינון */
   {
-    const grid = buildDutyGrid(days, dutyPlan);
-    const aoa = [];
-    aoa.push(['הפסקה \\ יום', ...days]);
-    if (!grid.breaks.length) {
-      aoa.push([NO_DATA, ...days.map(() => '')]);
-    } else {
-      for (const brk of grid.breaks) {
-        const row = [brk];
-        for (const day of days) {
-          row.push(dutyCellText(asObj(grid.cells[brk])[day]));
-        }
-        aoa.push(row);
-      }
+    const aoa = [['יום', 'הפסקה', 'תפקיד', 'מתחם', 'מתחם בנים/בנות', 'תורן']];
+    for (const a of flat) {
+      aoa.push([
+        dayDisplay(a.day),
+        breakDisplay(a.brk),
+        a.role,
+        a.area || '—',
+        a.area ? (zg[a.area] || '—') : '—',
+        a.name,
+      ]);
     }
-    XLSX.utils.book_append_sheet(wb, sheetFromAoa(aoa), 'לוח תורנויות');
+    if (flat.length === 0) aoa.push([NO_DATA, '', '', '', '', '']);
+    XLSX.utils.book_append_sheet(wb, sheetWithWidths(aoa, [12, 14, 12, 30, 16, 26]), 'לפי ימים');
   }
 
-  /* גיליון 3 — בקרה */
+  /* גיליון 2 — לפי מורים: אותן רשומות, ממוינות לפי שם */
+  {
+    const byName = flat.slice().sort((x, y) =>
+      str(x.name).localeCompare(str(y.name), 'he')
+      || days.indexOf(x.day) - days.indexOf(y.day));
+    const aoa = [['תורן', 'יום', 'הפסקה', 'תפקיד', 'מתחם']];
+    for (const a of byName) {
+      aoa.push([a.name, dayDisplay(a.day), breakDisplay(a.brk), a.role, a.area || '—']);
+    }
+    if (!byName.length) aoa.push([NO_DATA, '', '', '', '']);
+    XLSX.utils.book_append_sheet(wb, sheetWithWidths(aoa, [26, 12, 14, 12, 30]), 'לפי מורים');
+  }
+
+  /* גיליון 3 — לוח שבועי: אותו מבנה כמו הלוח שמופץ לצוות */
+  {
+    const regular = [...new Set(flat.map((a) => a.brk))]
+      .filter((b) => b !== 'תחילת יום' && b !== 'סוף יום')
+      .sort((a, b) => {
+        const n = (x) => { const m = /(\d+)/.exec(x); return m ? +m[1] : 99; };
+        return n(a) - n(b);
+      });
+    const pick = (day, brk, fn) => flat
+      .filter((a) => a.day === day && a.brk === brk && fn(a))
+      .map((a) => a.name).join(String.fromCharCode(10));
+
+    const aoa = [['', 'מתחמים', ...days.map(dayDisplay)]];
+    aoa.push(['תחילת יום', '', ...days.map((d) => pick(d, 'תחילת יום', () => true))]);
+
+    for (const brk of regular) {
+      const label = breakDisplay(brk);
+      for (const gender of ['בנות', 'בנים']) {
+        const zones = Object.keys(zg).filter((z) => zg[z] === gender);
+        aoa.push([
+          label + ' ' + gender,
+          zones.join(String.fromCharCode(10)),
+          ...days.map((d) => pick(d, brk, (a) => a.area && zg[a.area] === gender)),
+        ]);
+      }
+      const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס'));
+      if (dyn.some(Boolean)) aoa.push(['דינמיקלאס', '', ...dyn]);
+      aoa.push(['מ"מ תורנות', '', ...days.map((d) => pick(d, brk, (a) => a.role === 'מ"מ'))]);
+      aoa.push(['סיירת (' + label.replace('הפסקת ', '') + ')', '',
+        ...days.map((d) => pick(d, brk, (a) => a.role === 'סייר'))]);
+    }
+    aoa.push(['סיום יום', '', ...days.map((d) => pick(d, 'סוף יום', () => true))]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 18 }, { wch: 26 }, ...days.map(() => ({ wch: 24 }))];
+    XLSX.utils.book_append_sheet(wb, ws, 'לוח שבועי');
+  }
+
+  /* גיליון 4 — בקרה */
   {
     const rows = buildControlRows(model, dutyPlan);
-    const aoa = [];
-    aoa.push(['שם', 'סוג', 'מס׳ ימים', 'תורנויות חצר', 'מבנה', 'סה״כ', 'מכסה תקינה?']);
+    const aoa = [['שם', 'סוג', 'מס׳ ימים', 'תורנויות חצר', 'מבנה', 'סה״כ', 'מכסה תקינה?']];
     if (!rows.length) {
       aoa.push([NO_DATA, '', '', '', '', '', '']);
     } else {
       for (const r of rows) {
         aoa.push([
-          r.name, r.type, r.numDays, r.yard, r.building, r.total,
+          displayName(r.name), r.type, r.numDays, r.yard, r.building, r.total,
           r.quotaOk === null ? '—' : (r.quotaOk ? 'כן' : 'לא'),
         ]);
       }
     }
 
-    // הפרות
     aoa.push([]);
-    aoa.push(['הפרות (violations):']);
+    aoa.push(['הפרות:']);
     const violations = asArr(asObj(dutyPlan).violations);
     if (!violations.length) aoa.push(['אין הפרות']);
-    else violations.forEach(v => aoa.push([str(v)]));
+    else violations.forEach((v) => aoa.push([str(v)]));
 
-    // אזהרות מגרש
-    aoa.push([]);
-    aoa.push(['אזהרות:']);
-    const warnings = [];
-    if (!warnings.length) aoa.push(['אין אזהרות']);
-    else warnings.forEach(w => aoa.push([str(w)]));
-
-    XLSX.utils.book_append_sheet(wb, sheetFromAoa(aoa), 'בקרה');
+    XLSX.utils.book_append_sheet(wb, sheetWithWidths(aoa, [26, 20, 10, 14, 10, 10, 14]), 'בקרה');
   }
 
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -492,66 +638,6 @@ function dutiesByTeacher(days, dutyPlan) {
 /* ---- לוח בפורמט הנהוג בבית הספר ----
    שורות: תחילת יום, ואז לכל הפסקה — בנות / בנים / דינמיקלאס / מ"מ / סיירת,
    ולבסוף סיום יום. עמודות: ימי השבוע. */
-
-const DAY_FULL = {
-  'יום א': 'יום ראשון', 'יום ב': 'יום שני', 'יום ג': 'יום שלישי',
-  'יום ד': 'יום רביעי', 'יום ה': 'יום חמישי', 'יום ו': 'יום שישי',
-};
-// שמות ההפסקות כפי שנהוג בבית הספר.
-const BREAK_FULL = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
-
-function breakDisplay(b) { return BREAK_FULL[b] || b; }
-
-// שם לתצוגה בלוח שמופץ לצוות: בלי סימוני המקרא ובלי קידומות פנימיות.
-// "תת אברג'ל רות" -> "אברג'ל רות" · "ת- טמוזרטי ורד (ה)" -> "טמוזרטי ורד"
-function displayName(name) {
-  return str(name)
-    .replace(/\((?:ל|ה|ת)\)/g, '')
-    .replace(/^תת[\s-]+/, '')
-    .replace(/^ת-\s*/, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-function dayDisplay(d) { return DAY_FULL[d] || d; }
-
-// מגדר המתחם, לפי מגדר רוב הכיתות הסמוכות לו.
-function zoneGenders(model) {
-  let zones;
-  try {
-    zones = JSON.parse(require('fs').readFileSync(
-      require('path').join(__dirname, '..', '..', 'config', 'zones.json'), 'utf8'));
-  } catch (e) { return null; }
-  if (!zones || !zones.zonesByClass) return null;
-
-  const genderOfClass = {};
-  for (const c of asArr(asObj(model).classes)) {
-    if (c && c.id && c.gender) genderOfClass[c.id] = c.gender;
-  }
-  const tally = {};
-  for (const [cls, list] of Object.entries(zones.zonesByClass)) {
-    const g = genderOfClass[cls];
-    if (!g) continue;
-    for (const z of list || []) {
-      const acc = tally[z] || (tally[z] = { 'בנים': 0, 'בנות': 0 });
-      acc[g]++;
-    }
-  }
-  const out = {};
-  for (const z of zones.zones || []) {
-    const acc = tally[z];
-    out[z] = acc ? (acc['בנים'] > acc['בנות'] ? 'בנים' : 'בנות') : null;
-  }
-  return out;
-}
-
-// סדר ימי השבוע, ללא תלות בסדר שבו הופיעו בקובץ.
-const DAY_ORDER = ['יום א', 'יום ב', 'יום ג', 'יום ד', 'יום ה', 'יום ו', 'שבת'];
-function sortDays(days) {
-  return days.slice().sort((a, b) => {
-    const i = DAY_ORDER.indexOf(a), j = DAY_ORDER.indexOf(b);
-    return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
-  });
-}
 
 function buildBoardHtml(model, dutyPlan) {
   const days = sortDays(collectDays(model, null, dutyPlan));

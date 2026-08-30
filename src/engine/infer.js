@@ -93,6 +93,18 @@ function buildModel(rawLessons, overrides = {}) {
     tmap[name] = { name, days: new Set(), classCount: {}, lessons: [], byDay: {} };
   }
 
+  // מורים שנוספו ידנית בממשק ואינם בקובץ השעות כלל.
+  for (const name of (overrides && overrides.extraTeachers) || []) {
+    const n = String(name || '').trim();
+    if (!n || tmap[n]) continue;
+    tmap[n] = { name: n, days: new Set(), classCount: {}, lessons: [], byDay: {} };
+  }
+
+  // מורים שהוסרו ידנית בממשק — אינם נכללים בשיבוץ כלל.
+  for (const name of (overrides && overrides.removedTeachers) || []) {
+    delete tmap[String(name || '').trim()];
+  }
+
   // --- הסקת מחנכ/ת לכל כיתה: המורה עם הכי הרבה שעות בכיתה (>= סף) ---
   const homeroomOfClass = {}; // clsId -> teacherName
   for (const cls of classIds) {

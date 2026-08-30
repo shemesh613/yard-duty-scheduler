@@ -57,12 +57,23 @@
           <strong>מתחם קבוע</strong> — איפה המורה בדרך כלל, לפי אחוז השיעורים שלו.
           משמש רק כשאין לו שיעור צמוד להפסקה; אם יש, המערכת משבצת אותו ליד הכיתה שלימד.
         </p>
+        <div class="add-row">
+          <input type="text" id="newTeacherName" placeholder="שם מורה חדש..." />
+          <select id="newTeacherType">
+            <option value="מורה מקצועי">מורה מקצועי</option>
+            <option value="מחנכת">מחנכת</option>
+            <option value="תומכת למידה">תומכת למידה</option>
+            <option value="מורה משלימה תקשורת">מורה משלימה תקשורת</option>
+            <option value="הנהלה">הנהלה</option>
+          </select>
+          <button type="button" id="addTeacherBtn" class="btn btn-secondary">הוסף מורה</button>
+        </div>
         <div class="table-wrap">
           <table class="settings-table" id="teachersTable">
             <thead>
               <tr>
                 <th>מורה</th><th>ימים</th><th>תפקיד</th>
-                <th>מתחם קבוע</th><th>פטור (ל)</th><th>יום חופשי</th>
+                <th>מתחם קבוע</th><th>פטור (ל)</th><th>יום חופשי</th><th></th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -129,12 +140,17 @@
             <button id="redistributeBtn" type="button" class="btn btn-secondary">חלק מחדש הכל</button>
           </div>
         </div>
+        <p class="tab-note">
+          <strong>החלף</strong> — בוחרים מורה אחר לאותה עמדה.
+          <strong>הסר</strong> — המערכת מוצאת מחליף בעצמה.
+          כל שינוי מוצג לאישור לפני ביצוע, ושאר הלוח נשמר.
+        </p>
         <p id="removedNote" class="removed-note" hidden></p>
         <div class="table-wrap">
           <table id="dutiesTable" class="duties-table">
             <thead>
               <tr>
-                <th>יום</th><th>הפסקה</th><th>מתחם / תפקיד</th><th>תורן</th><th></th>
+                <th>יום</th><th>הפסקה</th><th>מתחם / תפקיד</th><th>תורן</th><th>פעולות</th>
               </tr>
             </thead>
             <tbody></tbody>

@@ -103,6 +103,8 @@ function mergeOverrides(base, user) {
   // רשימות התורנויות שהוסרו/נשמרות ידנית עוברות כמות שהן.
   if (user.blocked || base.blocked) out.blocked = user.blocked || base.blocked;
   if (user.pinned || base.pinned) out.pinned = user.pinned || base.pinned;
+  if (user.extraTeachers || base.extraTeachers) out.extraTeachers = user.extraTeachers || base.extraTeachers;
+  if (user.removedTeachers || base.removedTeachers) out.removedTeachers = user.removedTeachers || base.removedTeachers;
   return out;
 }
 
