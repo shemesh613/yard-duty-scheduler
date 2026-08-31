@@ -155,7 +155,7 @@ function displayName(name) {
 }
 function dayDisplay(d) { return DAY_FULL[d] || d; }
 
-// מגדר המתחם, לפי מגדר רוב הכיתות הסמוכות לו.
+// המתחם (בנים/בנות) של כל גיזרה, לפי מגדר רוב הכיתות הסמוכות לה.
 function zoneGenders(model) {
   let zones;
   try {
@@ -270,7 +270,7 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
 
   /* גיליון 1 — לפי ימים: שורה לכל תורנות, ניתן למיון וסינון */
   {
-    const aoa = [['יום', 'הפסקה', 'תפקיד', 'מתחם', 'מתחם בנים/בנות', 'תורן']];
+    const aoa = [['יום', 'הפסקה', 'תפקיד', 'גיזרה', 'מתחם', 'תורן']];
     for (const a of flat) {
       aoa.push([
         dayDisplay(a.day),
@@ -290,7 +290,7 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
     const byName = flat.slice().sort((x, y) =>
       str(x.name).localeCompare(str(y.name), 'he')
       || days.indexOf(x.day) - days.indexOf(y.day));
-    const aoa = [['תורן', 'יום', 'הפסקה', 'תפקיד', 'מתחם']];
+    const aoa = [['תורן', 'יום', 'הפסקה', 'תפקיד', 'גיזרה']];
     for (const a of byName) {
       aoa.push([a.name, dayDisplay(a.day), breakDisplay(a.brk), a.role, a.area || '—']);
     }
@@ -310,7 +310,7 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
       .filter((a) => a.day === day && a.brk === brk && fn(a))
       .map((a) => a.name).join(String.fromCharCode(10));
 
-    const aoa = [['', 'מתחמים', ...days.map(dayDisplay)]];
+    const aoa = [['', 'גיזרות', ...days.map(dayDisplay)]];
     aoa.push(['תחילת יום', '', ...days.map((d) => pick(d, 'תחילת יום', () => true))]);
 
     for (const brk of regular) {
@@ -752,7 +752,7 @@ function buildBoardHtml(model, dutyPlan) {
   </header>
   <div class="table-wrap">
     <table>
-      <thead><tr><th class="corner"></th><th class="corner">מתחמים</th>${
+      <thead><tr><th class="corner"></th><th class="corner">גיזרות</th>${
         days.map((d) => `<th>${esc(dayDisplay(d))}</th>`).join('')}</tr></thead>
       <tbody>${rows.join('\n')}</tbody>
     </table>

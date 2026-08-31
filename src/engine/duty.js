@@ -52,6 +52,11 @@ function mergeRules(rules) {
   return r;
 }
 
+// גיזרות מיוחדות שאינן מגיעות מקובץ הגיזרות: שער הכניסה (תחילת/סוף יום)
+// ועמדת הדינמיקלאס. אין להן מגדר ואינן נספרות באיזון חצר/מבנה.
+const GATE_ZONE = 'שער כניסה';
+const DYNAMIC_ZONE = 'דינמיקלאס';
+
 // ---------- מתחמים (config/zones.json) ----------
 // כל כיתה שייכת לשני מתחמים. המתחמים מחליפים את חלוקת "חצר/מבנה בנים/בנות" הישנה.
 function loadZones() {
@@ -340,7 +345,10 @@ function buildSlots(model, r) {
       if (isManagementBreak(brk, r)) {
         const count = (r.stationsOverride && r.stationsOverride[brk] != null) ? r.stationsOverride[brk] : 1;
         for (let i = 0; i < count; i++) {
-          slots.push({ day, break: brk, area: null, role: (brk === 'סוף יום' ? 'סוף יום' : 'תחילת יום'), mgmt: true, idx: i });
+          slots.push({
+            day, break: brk, area: GATE_ZONE,
+            role: (brk === 'סוף יום' ? 'סוף יום' : 'תחילת יום'), mgmt: true, idx: i,
+          });
         }
         continue;
       }
@@ -350,7 +358,7 @@ function buildSlots(model, r) {
       for (let i = 0; i < posts; i++) {
         // עמדה מעבר למספר המתחמים — עמדת דינמיקלאס (ימי ב׳ ו-ד׳, הפסקות 10 ו-12).
         if (i >= baseposts) {
-          slots.push({ day, break: brk, area: null, role: 'דינמיקלאס', mgmt: false, dynamic: true, idx: i });
+          slots.push({ day, break: brk, area: DYNAMIC_ZONE, role: 'דינמיקלאס', mgmt: false, dynamic: true, idx: i });
           continue;
         }
         const area = areas.length ? areas[i % areas.length] : null;

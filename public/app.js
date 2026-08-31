@@ -453,7 +453,8 @@
       tr.innerHTML = `
         <td>${a.day}</td>
         <td>${a.break}</td>
-        <td>${a.area || a.role}</td>
+        <td>${a.role}</td>
+        <td>${a.area || '—'}</td>
         <td class="t-name">${a.teacherName}</td>
         <td class="center">
           <button type="button" class="btn-swap" data-idx="${i}"
@@ -479,7 +480,7 @@
     if (removeBtn) {
       const a = assignments[Number(removeBtn.dataset.idx)];
       if (!a) return;
-      const where = a.day + ', ' + a.break + (a.area ? ', ' + a.area : ', ' + a.role);
+      const where = a.day + ', ' + a.break + ', ' + (a.area || a.role);
       if (!confirm('להסיר את ' + a.teacherName + ' מ' + where + '?'
         + ' המערכת תמצא תורן אחר לעמדה, ושאר הלוח יישמר.')) return;
       removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
@@ -525,7 +526,7 @@
     box.querySelector('.btn-swap-cancel').addEventListener('click', () => box.remove());
     box.querySelector('.btn-swap-ok').addEventListener('click', () => {
       const to = box.querySelector('.swap-pick').value;
-      const where = a.day + ', ' + a.break + (a.area ? ', ' + a.area : ', ' + a.role);
+      const where = a.day + ', ' + a.break + ', ' + (a.area || a.role);
       if (!confirm('להחליף ב' + where + '?' + String.fromCharCode(10)
         + 'במקום: ' + a.teacherName + String.fromCharCode(10)
         + 'לשבץ: ' + to)) return;
