@@ -23,7 +23,6 @@
   const errorDetail = $('errorDetail');
   const results = $('results');
   const statsEl = $('stats');
-  const htmlPreview = $('htmlPreview');
   const downloadBtn = $('downloadBtn');
   const teachersBtn = $('teachersBtn');
 
@@ -575,8 +574,6 @@
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
     renderDuties();
     renderBoard();
-
-    htmlPreview.innerHTML = data.html || '<p class="muted">אין תצוגה זמינה.</p>';
 
     if (data.downloadId) {
       const id = encodeURIComponent(data.downloadId);

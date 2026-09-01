@@ -52,8 +52,16 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// קבצים סטטיים מ-public/
-app.use(express.static(PUBLIC_DIR));
+// קבצים סטטיים מ-public/.
+// ללא מטמון: אחרת הדפדפן ממשיך להריץ גרסה ישנה של app.js/style.css
+// גם אחרי עדכון, והמסך מראה תוצאות שאינן תואמות את המערכת.
+app.use(express.static(PUBLIC_DIR, {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, must-revalidate');
+  },
+}));
 
 // GET / → מגיש את עמוד הממשק
 app.get('/', (req, res) => {
