@@ -13,6 +13,15 @@
   </header>
 
   <main class="container">
+    <!-- ניווט בין שלבים — תמיד גלוי, מאפשר לחזור בכל רגע -->
+    <nav id="stepNav" class="step-nav" hidden>
+      <button type="button" class="step" data-step="upload">1 · העלאת קובץ</button>
+      <span class="step-sep">›</span>
+      <button type="button" class="step" data-step="settings">2 · הגדרות</button>
+      <span class="step-sep">›</span>
+      <button type="button" class="step" data-step="results">3 · הלוח</button>
+    </nav>
+
     <!-- אזור העלאה -->
     <section class="card upload-card" id="uploadSection">
       <div id="dropZone" class="drop-zone" tabindex="0" role="button"

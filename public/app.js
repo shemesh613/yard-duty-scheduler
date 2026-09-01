@@ -29,6 +29,7 @@
   const saveClassesBtn = $('saveClassesBtn');
   const saveClassesMsg = $('saveClassesMsg');
 
+  const stepNav = $('stepNav');
   const restartBtn = $('restartBtn');
   const backToSettingsBtn = $('backToSettingsBtn');
 
@@ -132,6 +133,7 @@
       buildSettings(data);
       hide(uploadSection);
       show(settingsSection);
+      updateSteps('settings');
       settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       hide(loading);
@@ -147,11 +149,7 @@
     }
   });
 
-  backBtn.addEventListener('click', () => {
-    hide(settingsSection);
-    show(uploadSection);
-    uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+  backBtn.addEventListener('click', () => goStep('upload'));
 
   // --- בניית טבלאות ההגדרות ---
   function opt(value, label, selected) {
@@ -260,15 +258,45 @@
     });
   });
 
+  // ---------- ניווט בין שלבים ----------
+  // גלוי תמיד, כדי שאפשר יהיה לחזור להגדרות או ללוח בלי להעלות מחדש.
+
+  function goStep(step) {
+    if (step === 'settings' && !inspectData) return;
+    if (step === 'results' && !assignments.length) return;
+    hide(uploadSection); hide(settingsSection); hide(results); hide(errorBox);
+    if (step === 'upload') show(uploadSection);
+    else if (step === 'settings') show(settingsSection);
+    else show(results);
+    updateSteps(step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateSteps(current) {
+    if (!stepNav) return;
+    const has = { upload: true, settings: !!inspectData, results: assignments.length > 0 };
+    let anyBeyond = false;
+    stepNav.querySelectorAll('.step').forEach((b) => {
+      const s = b.dataset.step;
+      b.disabled = !has[s];
+      b.classList.toggle('active', s === current);
+      if (s !== 'upload' && has[s]) anyBeyond = true;
+    });
+    stepNav.hidden = !anyBeyond;
+  }
+
+  if (stepNav) {
+    stepNav.addEventListener('click', (e) => {
+      const b = e.target.closest('.step');
+      if (b && !b.disabled) goStep(b.dataset.step);
+    });
+  }
+
   // חזרה למסך ההגדרות עם אותו קובץ, כדי לשנות ולחשב מחדש.
   // הצפייה עצמה אינה מוחקת דבר — האזהרה על אובדן השינויים ניתנת בעת החישוב.
   if (backToSettingsBtn) {
     backToSettingsBtn.addEventListener('click', () => {
-      if (!inspectData) return;
-      hide(results);
-      hide(errorBox);
-      show(settingsSection);
-      settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      goStep('settings');
     });
   }
 
@@ -363,6 +391,7 @@
       } else if (inspectData) {
         hide(uploadSection);
         show(settingsSection);
+        updateSteps('settings');
       }
       if (st.fileName && fileNameEl) {
         fileNameEl.textContent = st.fileName;
@@ -725,6 +754,7 @@
     }
 
     show(results);
+    updateSteps('results');
     results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 

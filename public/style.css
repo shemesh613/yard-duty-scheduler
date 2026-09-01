@@ -254,6 +254,20 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
 
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+.step-nav {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 8px 12px; background: #fff;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.step {
+  border: none; background: none; font-family: inherit; font-size: .93rem;
+  color: var(--primary-dark); padding: 6px 14px; border-radius: 9px; cursor: pointer;
+}
+.step:hover:not(:disabled) { background: #eef5ff; }
+.step.active { background: var(--primary); color: #fff; font-weight: 600; }
+.step:disabled { color: #b6c0cd; cursor: default; }
+.step-sep { color: #c3cbd6; }
+
 .restore-bar {
   display: flex; justify-content: space-between; align-items: center; gap: 14px;
   flex-wrap: wrap; background: #fff8e6; border: 1px solid #e8ce8a;
