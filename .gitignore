@@ -6,3 +6,4 @@ uploads/
 
 # קבצי פלט שנוצרים אוטומטית
 output/
+output/state.json

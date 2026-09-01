@@ -95,15 +95,25 @@ app.get('/', (req, res) => {
 // POST /api/run — קבלת קובץ אקסל, הרצת הצינור, החזרת סיכום + HTML + מזהה הורדה
 app.post('/api/run', upload.single('file'), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        ok: false,
-        error: 'לא התקבל קובץ. ודאו שבחרתם קובץ אקסל (.xlsx) והעלו שוב.'
-      });
+    // הקובץ מגיע בהעלאה, או לפי מזהה של קובץ שכבר הועלה — כדי שאפשר יהיה
+    // לחשב מחדש אחרי שחזור מצב שמור, בלי להעלות שוב.
+    let buffer;
+    let fileId;
+    if (req.file) {
+      buffer = fs.readFileSync(req.file.path);
+      fileId = path.basename(req.file.path, '.xlsx');
+    } else {
+      const id = String((req.body && req.body.fileId) || '').replace(/[^a-zA-Z0-9]/g, '');
+      const p = id && path.join(UPLOAD_DIR, `${id}.xlsx`);
+      if (!p || !fs.existsSync(p)) {
+        return res.status(400).json({
+          ok: false,
+          error: 'לא התקבל קובץ. ודאו שבחרתם קובץ אקסל (.xlsx) והעלו שוב.'
+        });
+      }
+      buffer = fs.readFileSync(p);
+      fileId = id;
     }
-
-    const uploadedPath = req.file.path;
-    const buffer = fs.readFileSync(uploadedPath);
 
     // הרצת המנוע (אורקסטרטור) — נטען בעצלתיים כדי לעמוד גם כשמודול עדיין חסר
     const overrides = parseOverrides(req.body && req.body.overrides);
@@ -135,6 +145,7 @@ app.post('/api/run', upload.single('file'), (req, res) => {
       html: html || '',
       // רשימת השיבוצים — כדי שהממשק יוכל להציג טבלה ולאפשר הסרה ידנית.
       assignments: (dutyPlan && Array.isArray(dutyPlan.assignments)) ? dutyPlan.assignments : [],
+      fileId,
       downloadId: workbookBuffer ? downloadId : null
     });
   } catch (err) {
@@ -153,10 +164,19 @@ app.post('/api/run', upload.single('file'), (req, res) => {
 // כדי לאכלס את מסך ההגדרות הויזואלי. מחזיר רשימת מורים וכיתות עם הערכים שהוסקו.
 app.post('/api/inspect', upload.single('file'), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ ok: false, error: 'לא התקבל קובץ.' });
+    let buffer, fileId;
+    if (req.file) {
+      buffer = fs.readFileSync(req.file.path);
+      fileId = path.basename(req.file.path, '.xlsx');
+    } else {
+      const id = String((req.body && req.body.fileId) || '').replace(/[^a-zA-Z0-9]/g, '');
+      const p = id && path.join(UPLOAD_DIR, `${id}.xlsx`);
+      if (!p || !fs.existsSync(p)) {
+        return res.status(400).json({ ok: false, error: 'לא התקבל קובץ.' });
+      }
+      buffer = fs.readFileSync(p);
+      fileId = id;
     }
-    const buffer = fs.readFileSync(req.file.path);
     const { parse, infer } = loadInspect();
     const raw = parse.parseWorkbook(buffer);
     // מסך ההגדרות מציג את הערכים לאחר החלת מיקומים(מגדר) + config/overrides.json (הנהלה וכו').
@@ -205,6 +225,7 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
     return res.json({
       ok: true,
       meta: { days: model.meta.days || [], school: model.meta.school || '' },
+      fileId,
       teachers,
       classes,
     });
@@ -216,6 +237,41 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
       detail: (err && err.message) ? String(err.message) : '',
     });
   }
+});
+
+// ---------- שמירת מצב העבודה ----------
+// הלוח וההגדרות נשמרים בשרת, כדי שיציאה מהאתר לא תמחק את העבודה.
+// מצב אחד משותף — בית ספר אחד, מי שעורך רואה את מה שנשמר לאחרונה.
+const STATE_FILE = path.join(OUTPUT_DIR, 'state.json');
+
+// GET /api/state → המצב השמור, או null אם אין
+app.get('/api/state', (req, res) => {
+  try {
+    const raw = fs.readFileSync(STATE_FILE, 'utf8');
+    return res.json({ ok: true, state: JSON.parse(raw) });
+  } catch (_) {
+    return res.json({ ok: true, state: null });
+  }
+});
+
+// POST /api/state → שמירת המצב הנוכחי
+app.post('/api/state', express.json({ limit: '8mb' }), (req, res) => {
+  try {
+    const state = (req.body && req.body.state) || null;
+    if (!state) return res.status(400).json({ ok: false, error: 'לא התקבל מצב לשמירה.' });
+    state.savedAt = new Date().toISOString();
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state), 'utf8');
+    return res.json({ ok: true, savedAt: state.savedAt });
+  } catch (err) {
+    console.error('שגיאה בשמירת המצב:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ ok: false, error: 'לא הצלחנו לשמור.' });
+  }
+});
+
+// DELETE /api/state → מחיקת המצב השמור
+app.delete('/api/state', (req, res) => {
+  try { fs.unlinkSync(STATE_FILE); } catch (_) { /* לא קיים */ }
+  return res.json({ ok: true });
 });
 
 // POST /api/save-classes — שמירת מגדר הכיתות לשנה הנוכחית.

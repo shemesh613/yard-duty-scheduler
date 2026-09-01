@@ -44,6 +44,10 @@
   let removedTeachers = [];    // מורים שהוסרו ידנית
   let allTeacherNames = [];    // לרשימת הבחירה בהחלפת תורן
   let manualPins = [];         // שיבוצים שנקבעו ידנית ויש לשמרם
+  let fileId = null;           // מזהה הקובץ שהועלה, לחישוב מחדש בלי העלאה
+  let lastSummary = null;
+  let lastDownloadId = null;
+  let restoring = false;
 
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
@@ -124,6 +128,7 @@
         return;
       }
       inspectData = data;
+      if (data.fileId) fileId = data.fileId;
       buildSettings(data);
       hide(uploadSection);
       show(settingsSection);
@@ -290,6 +295,8 @@
       removedTeachers = [];
       assignments = [];
       inspectData = null;
+      fileId = null;
+      clearState();
       resetFile();
       hide(results);
       hide(settingsSection);
@@ -298,6 +305,129 @@
       uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
+
+  // ---------- שמירת מצב העבודה ----------
+  // נשמר בשרת אחרי כל חישוב ואחרי כל שינוי ידני, כדי שיציאה מהאתר
+  // לא תמחק את הלוח ואת ההגדרות.
+
+  function currentState() {
+    return {
+      fileId,
+      fileName: fileNameEl ? fileNameEl.textContent : '',
+      inspectData,
+      overrides: inspectData ? collectOverrides() : null,
+      removed, manualPins, extraTeachers, removedTeachers,
+      assignments,
+      summary: lastSummary,
+      downloadId: lastDownloadId,
+    };
+  }
+
+  let saveTimer = null;
+  function saveState() {
+    if (restoring || !fileId) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: currentState() }),
+      }).catch(() => { /* שמירה שקטה — לא מפריעים לעבודה */ });
+    }, 400);
+  }
+
+  function clearState() {
+    fetch('/api/state', { method: 'DELETE' }).catch(() => {});
+  }
+
+  function applyState(st) {
+    restoring = true;
+    try {
+      fileId = st.fileId || null;
+      inspectData = st.inspectData || null;
+      removed = st.removed || [];
+      manualPins = st.manualPins || [];
+      extraTeachers = st.extraTeachers || [];
+      removedTeachers = st.removedTeachers || [];
+      assignments = st.assignments || [];
+      lastSummary = st.summary || null;
+      lastDownloadId = st.downloadId || null;
+
+      if (inspectData) buildSettings(inspectData);
+      if (st.overrides) applyOverridesToForm(st.overrides);
+
+      if (assignments.length) {
+        renderResults({
+          summary: lastSummary, assignments, downloadId: lastDownloadId,
+        });
+      } else if (inspectData) {
+        hide(uploadSection);
+        show(settingsSection);
+      }
+      if (st.fileName && fileNameEl) {
+        fileNameEl.textContent = st.fileName;
+        show(fileChosen);
+      }
+    } finally {
+      restoring = false;
+    }
+  }
+
+  // החזרת ערכי הטופס שנשמרו לתוך טבלת ההגדרות.
+  function applyOverridesToForm(ov) {
+    const t = (ov && ov.teachers) || {};
+    $('teachersTable').querySelectorAll('tbody tr').forEach((tr) => {
+      const o = t[tr.dataset.name];
+      if (!o) return;
+      const set = (sel, val) => { const el = tr.querySelector(sel); if (el && val != null) el.value = val; };
+      set('.f-type', o.type);
+      set('.f-gender', o.genderArea || '');
+      const nd = tr.querySelector('.f-noduty');
+      if (nd) nd.checked = !!o.noDuty;
+      const off = new Set(o.daysOff || []);
+      tr.querySelectorAll('.f-off').forEach((c) => { c.checked = off.has(c.value); });
+    });
+    const c = (ov && ov.classes) || {};
+    $('classesTable').querySelectorAll('tbody tr').forEach((tr) => {
+      const o = c[tr.dataset.id];
+      const el = tr.querySelector('.f-cgender');
+      if (o && el && o.gender) el.value = o.gender;
+    });
+  }
+
+  // בטעינת הדף — אם יש עבודה שמורה, להציע לשחזר אותה.
+  (async function offerRestore() {
+    let st = null;
+    try {
+      const resp = await fetch('/api/state');
+      const data = await resp.json();
+      st = data && data.state;
+    } catch (_) { return; }
+    if (!st || !st.fileId) return;
+
+    const when = st.savedAt ? new Date(st.savedAt).toLocaleString('he-IL') : '';
+    const manual = (st.removed || []).length + (st.manualPins || []).length;
+    const bar = document.createElement('div');
+    bar.className = 'restore-bar';
+    bar.innerHTML = `
+      <span>נמצאה עבודה שמורה${st.fileName ? ' על "' + st.fileName + '"' : ''}${when ? ' מ-' + when : ''}
+        ${manual ? '· ' + manual + ' שינויים ידניים' : ''}</span>
+      <span class="restore-actions">
+        <button type="button" id="restoreYes" class="btn btn-secondary">שחזר</button>
+        <button type="button" id="restoreNo" class="btn btn-plain">התחל חדש</button>
+      </span>`;
+    const main = document.querySelector('main.container');
+    main.insertBefore(bar, main.firstChild);
+
+    bar.querySelector('#restoreYes').addEventListener('click', () => {
+      applyState(st);
+      bar.remove();
+    });
+    bar.querySelector('#restoreNo').addEventListener('click', () => {
+      clearState();
+      bar.remove();
+    });
+  })();
 
   // --- הוספה והסרה של מורים ---
 
@@ -397,7 +527,7 @@
   // --- שלב 2: חישוב הלוחות ---
   // חישוב הלוח. keepRest=true משמר את שאר השיבוצים ומחליף רק את מה שהוסר.
   async function computePlan(keepRest) {
-    if (!selectedFile) return;
+    if (!selectedFile && !fileId) return;
     hide(errorBox); show(loading);
     runBtn.disabled = true;
     if (redistributeBtn) redistributeBtn.disabled = true;
@@ -416,7 +546,8 @@
       }
 
       const fd = new FormData();
-      fd.append('file', selectedFile);
+      if (selectedFile) fd.append('file', selectedFile);
+      else if (fileId) fd.append('fileId', fileId);
       fd.append('overrides', JSON.stringify(overrides));
       const resp = await fetch('/api/run', { method: 'POST', body: fd });
       let data;
@@ -506,6 +637,7 @@
       if (!confirm('להסיר את ' + a.teacherName + ' מ' + where + '?'
         + ' המערכת תמצא תורן אחר לעמדה, ושאר הלוח יישמר.')) return;
       removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+      saveState();
       computePlan(true);
       return;
     }
@@ -572,8 +704,12 @@
     });
 
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
+    if (data.fileId) fileId = data.fileId;
+    lastSummary = data.summary || null;
+    lastDownloadId = data.downloadId || null;
     renderDuties();
     renderBoard();
+    saveState();
 
     if (data.downloadId) {
       const id = encodeURIComponent(data.downloadId);
@@ -748,6 +884,7 @@
     removed.push({ teacher: b.teacherName, day: b.day, break: b.break });
     manualPins.push({ teacher: b.teacherName, day: a.day, break: a.break, area: a.area, role: a.role });
     manualPins.push({ teacher: a.teacherName, day: b.day, break: b.break, area: b.area, role: b.role });
+    saveState();
     computePlan(true);
   }
 
