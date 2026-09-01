@@ -625,33 +625,64 @@
       + days.map((d) => `<th>${dayName(d)}</th>`).join('');
     tb.appendChild(head);
 
-    const rowFor = (label, cls, match) => {
+    // אילו הפסקות מתקיימות בכל יום. יום קצר (שישי) אין בו את כל ההפסקות,
+    // ולכן התא שלו ריק — וזה שונה לגמרי ממשבצת שלא אוישה.
+    const breaksOfDay = {};
+    for (const a of assignments) {
+      (breaksOfDay[a.day] = breaksOfDay[a.day] || new Set()).add(a.break);
+    }
+    const dayHasBreak = (day, brk) => !!(breaksOfDay[day] && breaksOfDay[day].has(brk));
+
+    // brk = ההפסקה שהשורה שייכת לה, או null לשורות שאינן תלויות בהפסקה.
+    const rowFor = (label, cls, match, brk) => {
       const tr = document.createElement('tr');
       if (cls) tr.className = cls;
       tr.innerHTML = `<th class="rh">${label}</th>` + days.map((day) => {
         const items = assignments
           .map((a, i) => ({ a, i }))
           .filter(({ a }) => a.day === day && match(a));
-        return '<td>' + items.map(({ a, i }) =>
-          `<span class="chip" draggable="true" data-idx="${i}" title="${a.role}${a.area ? ' · ' + a.area : ''}">${a.teacherName}</span>`
-        ).join('') + '</td>';
+        if (items.length) {
+          return '<td>' + items.map(({ a, i }) =>
+            `<span class="chip" draggable="true" data-idx="${i}" title="${a.role}${a.area ? ' · ' + a.area : ''}">${a.teacherName}</span>`
+          ).join('') + '</td>';
+        }
+        // אין שיבוץ. להבחין בין הפסקה שאינה מתקיימת ביום זה לבין עמדה שלא אוישה.
+        if (brk && !dayHasBreak(day, brk)) {
+          return '<td class="no-break" title="אין הפסקה זו ביום זה">—</td>';
+        }
+        return '<td class="unfilled" title="העמדה לא אוישה">לא אויש</td>';
       }).join('');
       tb.appendChild(tr);
     };
 
-    rowFor('תחילת יום', 'mgmt', (a) => a.break === 'תחילת יום');
+    rowFor('תחילת יום', 'mgmt', (a) => a.break === 'תחילת יום', 'תחילת יום');
 
     for (const brk of regular) {
       const label = brkName(brk);
-      rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר');
-      rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה');
-      const hasDyn = assignments.some((a) => a.break === brk && a.role === 'דינמיקלאס');
-      if (hasDyn) rowFor('דינמיקלאס', 'sub', (a) => a.break === brk && a.role === 'דינמיקלאס');
-      rowFor('מ"מ', 'sub', (a) => a.break === brk && a.role === 'מ"מ');
-      rowFor('סיירת', 'sub patrol', (a) => a.break === brk && a.role === 'סייר');
+      rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר', brk);
+      rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה', brk);
+      const dynDays = [...new Set(assignments
+        .filter((a) => a.break === brk && a.role === 'דינמיקלאס').map((a) => a.day))];
+      if (dynDays.length) {
+        // דינמיקלאס מתקיים רק בימים מסוימים — תא ריק בשאר הימים אינו חוסר.
+        const tr = document.createElement('tr');
+        tr.className = 'sub';
+        tr.innerHTML = '<th class="rh">דינמיקלאס</th>' + days.map((day) => {
+          const items = assignments.map((a, i) => ({ a, i }))
+            .filter(({ a }) => a.day === day && a.break === brk && a.role === 'דינמיקלאס');
+          if (items.length) {
+            return '<td>' + items.map(({ a, i }) =>
+              `<span class="chip" draggable="true" data-idx="${i}" title="דינמיקלאס">${a.teacherName}</span>`).join('') + '</td>';
+          }
+          return '<td class="no-break" title="אין דינמיקלאס ביום זה">—</td>';
+        }).join('');
+        tb.appendChild(tr);
+      }
+      rowFor('מ"מ', 'sub', (a) => a.break === brk && a.role === 'מ"מ', brk);
+      rowFor('סיירת', 'sub patrol', (a) => a.break === brk && a.role === 'סייר', brk);
     }
 
-    rowFor('סיום יום', 'mgmt', (a) => a.break === 'סוף יום');
+    rowFor('סיום יום', 'mgmt', (a) => a.break === 'סוף יום', 'סוף יום');
   }
 
   // --- גרירה ---
