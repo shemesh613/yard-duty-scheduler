@@ -520,6 +520,7 @@ function assignDuties(model, rules, options = {}) {
       if (!worksOnDay(t, slot.day)) return false;
       if (t.dayOff && t.dayOff === slot.day) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
+      if (isExcluded(t, slot, r)) return false;
       if (st.total >= st.quota) return false;
       return true;
     });
@@ -627,6 +628,11 @@ function assignDuties(model, rules, options = {}) {
         violations.push('מורה "' + t.name + '" שובץ ב-' + a.day + ' / ' + a.break + ' מחוץ לטווח העבודה שלו באותו יום.');
         quotaOk = false;
       }
+      if (isExcluded(t, a, r)) {
+        violations.push('מורה "' + t.name + '" (' + t.type + ') שובץ ל' + a.role
+          + ' ב-' + a.day + ' בניגוד לאיסור שיבוץ מפורש.');
+        quotaOk = false;
+      }
     }
 
     perTeacher[t.id] = { yard: st.yard, building: st.building, total, quotaOk };
@@ -666,6 +672,23 @@ function assignDuties(model, rules, options = {}) {
   return { assignments, perTeacher, violations, score };
 }
 
+// איסורי שיבוץ מ-config/rules.json. כל כלל מצרף סוגי מורים, ימים ותפקידים
+// וגיזרות; שדה שאינו מופיע בכלל אינו מגביל. מחזיר true אם השיבוץ אסור.
+function isExcluded(teacher, slot, r) {
+  const rules = Array.isArray(r.exclusions) ? r.exclusions : [];
+  for (const rule of rules) {
+    if (!rule) continue;
+    if (Array.isArray(rule.types) && rule.types.indexOf(teacher.type) === -1) continue;
+    if (Array.isArray(rule.days) && rule.days.indexOf(slot.day) === -1) continue;
+    if (Array.isArray(rule.roles) && rule.roles.indexOf(slot.role) === -1) continue;
+    if (Array.isArray(rule.breaks) && rule.breaks.indexOf(slot.break) === -1) continue;
+    if (Array.isArray(rule.zones) && rule.zones.indexOf(slot.area) === -1) continue;
+    if (Array.isArray(rule.names) && rule.names.indexOf(teacher.name) === -1) continue;
+    return true;
+  }
+  return false;
+}
+
 // ---------- בחירת מועמדים לתורנות חצר/מבנה ----------
 function eligibleForDuty(slot, teachers, state, r) {
   const out = [];
@@ -688,6 +711,7 @@ function eligibleForDuty(slot, teachers, state, r) {
     if (t.dayOff && t.dayOff === slot.day) continue;
     if (!withinWorkSpan(t, slot.day, slot.break, r)) continue; // חלון זמן
     if (!genderOk(t, slot.area, slot.day, slot.break)) continue;  // מגדר
+    if (isExcluded(t, slot, r)) continue;           // איסור שיבוץ מפורש
     if (!freeAroundBreak(t, slot.day, slot.break)) continue; // לא מלמד בשני הצדדים
     out.push(t);
   }
