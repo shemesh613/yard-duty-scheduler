@@ -31,6 +31,7 @@
   const saveClassesMsg = $('saveClassesMsg');
 
   const restartBtn = $('restartBtn');
+  const backToSettingsBtn = $('backToSettingsBtn');
 
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
@@ -255,6 +256,18 @@
     });
   });
 
+  // חזרה למסך ההגדרות עם אותו קובץ, כדי לשנות ולחשב מחדש.
+  // הצפייה עצמה אינה מוחקת דבר — האזהרה על אובדן השינויים ניתנת בעת החישוב.
+  if (backToSettingsBtn) {
+    backToSettingsBtn.addEventListener('click', () => {
+      if (!inspectData) return;
+      hide(results);
+      hide(errorBox);
+      show(settingsSection);
+      settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   // חזרה לדף ההעלאה. כל מה שנעשה ידנית על הלוח הנוכחי יאבד, ולכן נדרש אישור.
   if (restartBtn) {
     restartBtn.addEventListener('click', () => {
@@ -434,6 +447,13 @@
   }
 
   runBtn.addEventListener('click', () => {
+    const manual = removed.length + manualPins.length;
+    if (manual) {
+      const NL = String.fromCharCode(10);
+      if (!confirm('לחשב את הלוח מחדש?' + NL + NL
+        + 'יש ' + manual + ' שינויים ידניים בלוח — החלפות והסרות.' + NL
+        + 'חישוב מחדש ימחק אותם והלוח ייבנה מאפס.')) return;
+    }
     removed = [];
     manualPins = [];
     assignments = [];

@@ -252,6 +252,8 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   color: #a9700f; font-weight: 700;
 }
 
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
 .results-head {
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
