@@ -765,8 +765,10 @@ function candidateCost(t, slot, state, r, locations) {
     else if (isBuildingArea(slot.area)) cost += (st.building - n * (1 - share)) * 50;
   }
 
-  // (3) פיזור יומי — אם כבר יש לו תורנות באותו יום, פחות עדיף.
-  cost += (st.perDay[slot.day] || 0) * 40;
+  // (3) פיזור יומי — העדפה קלה בלבד לפזר על פני ימים. ניתן לכוונון
+  // ב-config/rules.json תחת sameDayPenalty; שיבוץ כפול באותו יום מותר.
+  const dayPenalty = (r.sameDayPenalty != null) ? r.sameDayPenalty : 40;
+  cost += (st.perDay[slot.day] || 0) * dayPenalty;
 
   // (4) הצמדה לשעת שהייה/פרטני — בונוס (הורדת עלות).
   if (r.preferStandbyAdjacency && !slot.mgmt && adjacentToStandby(t, slot.day, slot.break)) {
