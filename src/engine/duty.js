@@ -555,6 +555,41 @@ function assignDuties(model, rules, options = {}) {
     takeSlot(slot, cands[0]);
   }
 
+  // ---------- שלב 3: מילוי אחרון של עמדות שנותרו ריקות ----------
+  // עמדה ריקה גרועה מעמדה שאוישה בפשרה. כאן מרפים את שני האילוצים הרכים
+  // בלבד — הצמדות לשיעורים סביב ההפסקה, ותקרת המכסה — ומדווחים על כל
+  // שיבוץ כזה. אילוצי מגדר, ימי חופש, פטור ואיסורים מפורשים נשמרים.
+  for (const slot of dutySlots) {
+    if (slot._taken) continue;
+    const relaxed = teachers.filter((t) => {
+      if (t.noDuty) return false;
+      if (t.type === r.managementType && !slot.patrol) return false;
+      if (t.type === 'חוגים') return false;
+      const st = state.get(t.id);
+      if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
+      if (!worksOnDay(t, slot.day)) return false;
+      if (isDayOff(t, slot.day)) return false;
+      if (!withinWorkSpan(t, slot.day, slot.break, r)) return false;
+      if (!genderOk(t, slot.area, slot.day, slot.break)) return false;
+      if (isExcluded(t, slot, r)) return false;
+      if (isBlocked(t, slot.day, slot.break)) return false;
+      // חריגה מהמכסה מותרת בפשרה, אך עד תורנות אחת מעבר לתקרה —
+      // אחרת מורה בודד סופג את כל החוסר.
+      const over = st.total - (st.quota + (r.relaxedOverflow != null ? r.relaxedOverflow : 1));
+      if (over >= 0) return false;
+      return true;
+    });
+    if (!relaxed.length) continue;
+    relaxed.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
+    const chosen = relaxed[0];
+    takeSlot(slot, chosen);
+    const why = !freeAroundBreak(chosen, slot.day, slot.break)
+      ? 'מלמד בשיעורים משני צדי ההפסקה'
+      : 'מעבר למכסתו';
+    warnings.push('לאיוש ' + slot.role + ' ב-' + slot.day + ' / ' + slot.break
+      + ' נדרשה פשרה: "' + chosen.name + '" (' + why + '). יש לוודא שהדבר אפשרי.');
+  }
+
   // ---------- שלב 3: תורנות מ"מ (substitution) — מילוי עמדות שנותרו ----------
   // אם נשארו עמדות לא משובצות ועדיין יש מורים מתחת ל"מכסה+מ"מ" — כבר טופל בשלב 2,
   // כי effectiveQuota כולל את ה-extraSubstitution. אין צורך בשלב נפרד.
