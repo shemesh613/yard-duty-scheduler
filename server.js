@@ -56,6 +56,8 @@ const upload = multer({ storage });
 // ללא מטמון: אחרת הדפדפן ממשיך להריץ גרסה ישנה של app.js/style.css
 // גם אחרי עדכון, והמסך מראה תוצאות שאינן תואמות את המערכת.
 app.use(express.static(PUBLIC_DIR, {
+  // index:false — כדי ש-"/" יעבור למסלול שלנו, שמוסיף חותמת גרסה לנכסים.
+  index: false,
   etag: false,
   lastModified: false,
   setHeaders: (res) => {
@@ -63,9 +65,31 @@ app.use(express.static(PUBLIC_DIR, {
   },
 }));
 
-// GET / → מגיש את עמוד הממשק
+// חותמת גרסה — זמן השינוי האחרון של קבצי הממשק.
+// מוצמדת לכתובות app.js ו-style.css כדי שהדפדפן לא יריץ גרסה ישנה.
+function uiVersion() {
+  let newest = 0;
+  for (const f of ['app.js', 'style.css', 'index.html']) {
+    try {
+      const t = fs.statSync(path.join(PUBLIC_DIR, f)).mtimeMs;
+      if (t > newest) newest = t;
+    } catch (_) { /* קובץ חסר */ }
+  }
+  return String(Math.floor(newest));
+}
+
+// GET / → מגיש את עמוד הממשק, עם חותמת גרסה על הנכסים
 app.get('/', (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  try {
+    const v = uiVersion();
+    const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8')
+      .replace('href="style.css"', 'href="style.css?v=' + v + '"')
+      .replace('src="app.js"', 'src="app.js?v=' + v + '"')
+      .replace('</footer>', '<p class="version">גרסה ' + v.slice(-6) + '</p></footer>');
+    res.type('html').send(html);
+  } catch (err) {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  }
 });
 
 // POST /api/run — קבלת קובץ אקסל, הרצת הצינור, החזרת סיכום + HTML + מזהה הורדה

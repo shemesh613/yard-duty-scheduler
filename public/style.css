@@ -427,6 +427,7 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
 }
 .site-footer p { margin: 4px 0; }
 .site-footer a { color: var(--primary-dark); }
+.version { font-size: .75rem; color: #aab4c2; }
 
 @media (max-width: 600px) {
   .site-header h1 { font-size: 1.5rem; }
