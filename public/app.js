@@ -188,13 +188,16 @@
       const tr = document.createElement('tr');
       tr.dataset.name = t.name;
       // מורה שנוכח בכל יום חייב יום חופשי מוגדר, אחרת ישובץ גם ביום שאינו בא.
-      const needsDayOff = t.alwaysPresent && !t.dayOff;
+      const needsDayOff = t.alwaysPresent
+        && !(Array.isArray(t.daysOff) ? t.daysOff.length : t.dayOff);
       if (needsDayOff) tr.className = 'needs-attention';
 
       const typeOpts = TEACHER_TYPES
         .map((ty) => opt(ty, ty, ty === t.type)).join('');
-      const dayOpts = ['<option value="">—</option>']
-        .concat(days.map((d) => opt(d, d, d === t.dayOff))).join('');
+      const offSet = new Set(Array.isArray(t.daysOff) ? t.daysOff : (t.dayOff ? [t.dayOff] : []));
+      const dayBoxes = days.map((d) =>
+        `<label class="day-pick sm"><input type="checkbox" class="f-off" value="${d}"${offSet.has(d) ? ' checked' : ''}> ${d.replace('יום ', '')}</label>`
+      ).join('');
 
       tr.innerHTML = `
         <td class="t-name">${t.name}${t.rabbi ? ' <span class="badge">רב</span>' : ''}${t.isNew ? ' <span class="badge badge-new">נוסף</span>' : ''}</td>
@@ -208,7 +211,7 @@
         </td>
         <td class="center"><input type="checkbox" class="f-noduty"${t.noDuty ? ' checked' : ''} /></td>
         <td>
-          <select class="f-dayoff">${dayOpts}</select>
+          <div class="days-off">${dayBoxes}</div>
           ${needsDayOff ? '<span class="must-fill">חובה לסמן</span>' : ''}
         </td>
         <td class="center">
@@ -365,11 +368,11 @@
       const o = {};
       const type = tr.querySelector('.f-type').value;
       const gender = tr.querySelector('.f-gender').value;
-      const dayoff = tr.querySelector('.f-dayoff').value;
+      const daysOff = [...tr.querySelectorAll('.f-off:checked')].map((c) => c.value);
       if (type) o.type = type;
       if (gender) o.genderArea = gender;
       o.noDuty = tr.querySelector('.f-noduty').checked;
-      if (dayoff) o.dayOff = dayoff;
+      o.daysOff = daysOff;
       overrides.teachers[tr.dataset.name] = o;
     });
     $('classesTable').querySelectorAll('tbody tr').forEach((tr) => {
@@ -551,6 +554,7 @@
 
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
     renderDuties();
+    renderBoard();
 
     htmlPreview.innerHTML = data.html || '<p class="muted">אין תצוגה זמינה.</p>';
 
@@ -570,4 +574,133 @@
     show(results);
     results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  // ================= הלוח הגדול לפני הפצה =================
+  // מציג את השבוע כמו הלוח שמופץ לצוות, ומאפשר לגרור תורן מתא לתא.
+  // גרירה מחליפה בין שני התורנים, ותמיד מבקשת אישור.
+
+  const bigBoard = $('bigBoard');
+
+  const BREAK_FULL = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
+  const DAY_FULL = {
+    'יום א': 'יום ראשון', 'יום ב': 'יום שני', 'יום ג': 'יום שלישי',
+    'יום ד': 'יום רביעי', 'יום ה': 'יום חמישי', 'יום ו': 'יום שישי',
+  };
+  const brkName = (b) => BREAK_FULL[b] || b;
+  const dayName = (d) => DAY_FULL[d] || d;
+
+  function renderBoard() {
+    if (!bigBoard) return;
+    const tb = bigBoard.querySelector('tbody');
+    tb.innerHTML = '';
+    if (!assignments.length) return;
+
+    const days = orderDays([...new Set(assignments.map((a) => a.day))]);
+    const regular = [...new Set(assignments.map((a) => a.break))]
+      .filter((b) => b !== 'תחילת יום' && b !== 'סוף יום')
+      .sort((a, b) => {
+        const n = (x) => { const m = /(\d+)/.exec(x); return m ? +m[1] : 99; };
+        return n(a) - n(b);
+      });
+
+    const head = document.createElement('tr');
+    head.innerHTML = '<th class="corner"></th>'
+      + days.map((d) => `<th>${dayName(d)}</th>`).join('');
+    tb.appendChild(head);
+
+    const rowFor = (label, cls, match) => {
+      const tr = document.createElement('tr');
+      if (cls) tr.className = cls;
+      tr.innerHTML = `<th class="rh">${label}</th>` + days.map((day) => {
+        const items = assignments
+          .map((a, i) => ({ a, i }))
+          .filter(({ a }) => a.day === day && match(a));
+        return '<td>' + items.map(({ a, i }) =>
+          `<span class="chip" draggable="true" data-idx="${i}" title="${a.role}${a.area ? ' · ' + a.area : ''}">${a.teacherName}</span>`
+        ).join('') + '</td>';
+      }).join('');
+      tb.appendChild(tr);
+    };
+
+    rowFor('תחילת יום', 'mgmt', (a) => a.break === 'תחילת יום');
+
+    for (const brk of regular) {
+      const label = brkName(brk);
+      rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר');
+      rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה');
+      const hasDyn = assignments.some((a) => a.break === brk && a.role === 'דינמיקלאס');
+      if (hasDyn) rowFor('דינמיקלאס', 'sub', (a) => a.break === brk && a.role === 'דינמיקלאס');
+      rowFor('מ"מ', 'sub', (a) => a.break === brk && a.role === 'מ"מ');
+      rowFor('סיירת', 'sub patrol', (a) => a.break === brk && a.role === 'סייר');
+    }
+
+    rowFor('סיום יום', 'mgmt', (a) => a.break === 'סוף יום');
+  }
+
+  // --- גרירה ---
+  let dragIdx = null;
+
+  if (bigBoard) {
+    bigBoard.addEventListener('dragstart', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      dragIdx = Number(chip.dataset.idx);
+      chip.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(dragIdx)); } catch (_) { /* דפדפנים ישנים */ }
+    });
+
+    bigBoard.addEventListener('dragend', () => {
+      dragIdx = null;
+      bigBoard.querySelectorAll('.dragging, .drop-target')
+        .forEach((el) => el.classList.remove('dragging', 'drop-target'));
+    });
+
+    bigBoard.addEventListener('dragover', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip || dragIdx === null || Number(chip.dataset.idx) === dragIdx) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      chip.classList.add('drop-target');
+    });
+
+    bigBoard.addEventListener('dragleave', (e) => {
+      const chip = e.target.closest('.chip');
+      if (chip) chip.classList.remove('drop-target');
+    });
+
+    bigBoard.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const chip = e.target.closest('.chip');
+      if (!chip || dragIdx === null) return;
+      const toIdx = Number(chip.dataset.idx);
+      if (toIdx === dragIdx) return;
+      swapAssignments(dragIdx, toIdx);
+    });
+  }
+
+  // החלפה בין שני שיבוצים קיימים, לאחר אישור.
+  function swapAssignments(i, j) {
+    const a = assignments[i];
+    const b = assignments[j];
+    if (!a || !b) return;
+
+    const NL = String.fromCharCode(10);
+    const place = (x) => dayName(x.day) + ', ' + brkName(x.break) + ', ' + (x.area || x.role);
+    const msg = 'להחליף בין שני התורנים?' + NL + NL
+      + a.teacherName + ' — ' + place(a) + NL
+      + b.teacherName + ' — ' + place(b) + NL + NL
+      + 'לאחר ההחלפה:' + NL
+      + b.teacherName + ' → ' + place(a) + NL
+      + a.teacherName + ' → ' + place(b);
+    if (!confirm(msg)) return;
+
+    // שני הצדדים נחסמים ממקומם הנוכחי וננעצים במקום החדש.
+    removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+    removed.push({ teacher: b.teacherName, day: b.day, break: b.break });
+    manualPins.push({ teacher: b.teacherName, day: a.day, break: a.break, area: a.area, role: a.role });
+    manualPins.push({ teacher: a.teacherName, day: b.day, break: b.break, area: b.area, role: b.role });
+    computePlan(true);
+  }
+
 })();

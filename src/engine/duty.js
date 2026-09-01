@@ -433,7 +433,7 @@ function assignDuties(model, rules, options = {}) {
 
   // מורה שנוכח בכל יום חייב יום חופשי מוגדר — אחרת ישובץ גם ביום שאינו בא.
   for (const t of teachers) {
-    if (!t.alwaysPresent || t.noDuty || t.dayOff) continue;
+    if (!t.alwaysPresent || t.noDuty || daysOffOf(t).length) continue;
     violations.push('חסר יום חופשי: "' + t.name + '" מסומן כנוכח בכל יום, ולכן שובץ '
       + 'בכל ימי השבוע. יש לקבוע את יומו החופשי במסך ההגדרות.');
   }
@@ -499,8 +499,8 @@ function assignDuties(model, rules, options = {}) {
   const startBreak = r.rabbiStartOfDayBreak || 'תחילת יום';
   for (const rb of rabbis) {
     for (const day of days) {
-      if (rb.dayOff && rb.dayOff === day) continue;
-      if (!worksOnDay(rb, day) && rb.dayOff) continue; // אם לא עובד וגם לא יום חופשי מוגדר — נשבץ בכל יום פעיל
+      if (isDayOff(rb, day)) continue;
+      if (!worksOnDay(rb, day) && daysOffOf(rb).length) continue;
       if (!worksOnDay(rb, day)) continue;
       if (isBlocked(rb, day, startBreak)) continue;
       const st = state.get(rb.id);
@@ -518,7 +518,7 @@ function assignDuties(model, rules, options = {}) {
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
       if (!worksOnDay(t, slot.day)) return false;
-      if (t.dayOff && t.dayOff === slot.day) return false;
+      if (isDayOff(t, slot.day)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
       if (st.total >= st.quota) return false;
@@ -647,7 +647,7 @@ function assignDuties(model, rules, options = {}) {
   // ולידציה: יאיר שובץ לתחילת יום בכל יום פעיל מלבד dayOff
   for (const rb of rabbis) {
     for (const day of days) {
-      if (rb.dayOff === day) continue;
+      if (isDayOff(rb, day)) continue;
       if (!worksOnDay(rb, day)) continue;
       const has = assignments.some(a => a.teacherId === rb.id && a.day === day && a.break === startBreak && a.role === 'תחילת יום');
       if (!has) {
@@ -684,6 +684,11 @@ function isExcluded(teacher, slot, r) {
     if (Array.isArray(rule.breaks) && rule.breaks.indexOf(slot.break) === -1) continue;
     if (Array.isArray(rule.zones) && rule.zones.indexOf(slot.area) === -1) continue;
     if (Array.isArray(rule.names) && rule.names.indexOf(teacher.name) === -1) continue;
+    // onlyRoles — היתר בלעדי: כל תפקיד אחר אסור.
+    if (Array.isArray(rule.onlyRoles)) {
+      if (rule.onlyRoles.indexOf(slot.role) === -1) return true;
+      continue;
+    }
     return true;
   }
   return false;
@@ -707,8 +712,8 @@ function eligibleForDuty(slot, teachers, state, r) {
     }
     if (st.assignedSlots.has(slot.day + '|' + slot.break)) continue; // כבר משובץ באותה הפסקה
     if (!worksOnDay(t, slot.day)) continue;
-    // יום חופשי שנקבע ידנית — אין תורנות באותו יום גם אם המורה בבית הספר.
-    if (t.dayOff && t.dayOff === slot.day) continue;
+    // ימי חופש שנקבעו ידנית — אין תורנות בהם גם אם המורה בבית הספר.
+    if (isDayOff(t, slot.day)) continue;
     if (!withinWorkSpan(t, slot.day, slot.break, r)) continue; // חלון זמן
     if (!genderOk(t, slot.area, slot.day, slot.break)) continue;  // מגדר
     if (isExcluded(t, slot, r)) continue;           // איסור שיבוץ מפורש
@@ -718,14 +723,24 @@ function eligibleForDuty(slot, teachers, state, r) {
   return out;
 }
 
+// כל ימי החופש של המורה.
+function daysOffOf(teacher) {
+  if (Array.isArray(teacher.daysOff) && teacher.daysOff.length) return teacher.daysOff;
+  return teacher.dayOff ? [teacher.dayOff] : [];
+}
+function isDayOff(teacher, day) {
+  return daysOffOf(teacher).indexOf(day) !== -1;
+}
+
 // כמה ימים בשבוע המורה זמין לתורנות.
 // מי שאין עליו נתון זמין בכל יום, ולכן נספר כמלוא ימי הלימוד — לא כאפס.
 function availableDayCount(teacher, r) {
   const week = (r && r._weekDays) || 6;
-  if (teacher.alwaysPresent) return week - (teacher.dayOff ? 1 : 0);
+  const off = daysOffOf(teacher).length;
+  if (teacher.alwaysPresent) return Math.max(1, week - off);
   const days = Array.isArray(teacher.daysWorked) ? teacher.daysWorked : [];
-  if (!days.length) return week;
-  return teacher.dayOff ? Math.max(1, days.length - 1) : days.length;
+  if (!days.length) return Math.max(1, week - off);
+  return Math.max(1, days.length - off);
 }
 
 // ---------- פונקציית ניקוד מועמד (קטן יותר = עדיף) ----------

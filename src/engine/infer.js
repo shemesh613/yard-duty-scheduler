@@ -170,8 +170,11 @@ function buildModel(rawLessons, overrides = {}) {
 
     // dayOff — הוראה ידנית בלבד. אין להסיק אותו מהיעדר שיעורים:
     // ייתכנו ימים בלי שיעורים שבהם המורה עדיין בבית הספר.
-    let dayOff = null;
-    if (ov.dayOff !== undefined && ov.dayOff !== null) dayOff = ov.dayOff;
+    // תומך גם ב-dayOff יחיד וגם ב-daysOff מרובים.
+    let daysOff = [];
+    if (Array.isArray(ov.daysOff)) daysOff = ov.daysOff.filter(Boolean);
+    else if (ov.dayOff !== undefined && ov.dayOff !== null && ov.dayOff !== '') daysOff = [ov.dayOff];
+    const dayOff = daysOff.length ? daysOff[0] : null;
 
     // alwaysPresent — נוכח בכל יום גם בלי שיעורים. נקבע ידנית בלבד,
     // לאנשי סגל בודדים (ראו DECISIONS.md).
@@ -188,7 +191,8 @@ function buildModel(rawLessons, overrides = {}) {
       noDuty, // מוסק — ניתן לעקיפה
       genderArea, // ניתן לעקיפה
       homeroomOf, // מוסק — ניתן לעקיפה
-      dayOff, // ידני בלבד
+      dayOff, // ידני בלבד — היום הראשון מתוך daysOff, לתאימות לאחור
+      daysOff, // ידני בלבד — כל ימי החופש
       alwaysPresent, // ידני בלבד
       workSpan,
       lessons: t.lessons,

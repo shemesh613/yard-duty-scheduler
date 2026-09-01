@@ -268,6 +268,9 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
 }
 .add-days-label { color: var(--muted); }
 .add-days-hint { color: var(--muted); font-size: .8rem; }
+.days-off { display: flex; gap: 3px; flex-wrap: wrap; }
+.day-pick.sm { padding: 1px 6px; font-size: .8rem; gap: 3px; }
+
 .day-pick {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 9px; background: #fff; border: 1px solid var(--border);
@@ -370,6 +373,41 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   font-size: .82rem; cursor: pointer; white-space: nowrap;
 }
 .btn-remove:hover { background: #a8412f; color: #fff; border-color: #a8412f; }
+
+/* ---- הלוח הגדול לפני הפצה ---- */
+.board-hint { color: var(--muted); font-size: .86rem; }
+.board-wrap { max-height: 72vh; overflow: auto; }
+.big-board { border-collapse: collapse; width: 100%; min-width: 900px; }
+.big-board th, .big-board td {
+  border: 1px solid #cfd8e6; padding: 5px 7px; vertical-align: top; text-align: right;
+}
+.big-board tr:first-child th {
+  background: #3c4a5e; color: #fff; text-align: center;
+  position: sticky; top: 0; z-index: 3; font-size: .9rem;
+}
+.big-board .rh {
+  background: #eef2f8; font-size: .8rem; white-space: nowrap;
+  width: 130px; font-weight: 600; position: sticky; right: 0; z-index: 2;
+}
+.big-board tr.yard .rh { background: #e6f2fb; color: #14507d; }
+.big-board tr.bld  .rh { background: #eae8f6; color: #453a7d; }
+.big-board tr.mgmt .rh { background: #e8f0e8; color: #2c4a2c; }
+.big-board tr.sub  .rh { background: #f6f6f6; color: #555; font-weight: 500; }
+.big-board tr.patrol { border-bottom: 2px solid #9fb0c6; }
+.big-board td { background: #fff; min-width: 128px; }
+
+.chip {
+  display: block; margin: 2px 0; padding: 3px 8px;
+  background: #f4f8fe; border: 1px solid #d5e2f3; border-radius: 7px;
+  font-size: .82rem; cursor: grab; user-select: none;
+}
+.chip:hover { background: #e7f0fd; border-color: var(--primary); }
+.chip:active { cursor: grabbing; }
+.chip.dragging { opacity: .4; }
+.chip.drop-target {
+  background: #fff3d6; border-color: var(--warn); border-style: dashed;
+  box-shadow: 0 0 0 2px rgba(196,127,26,.2);
+}
 
 .site-footer {
   text-align: center;

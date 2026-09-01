@@ -47,7 +47,10 @@
     },
     "בלולו הרב יאיר": {
       "type": "הנהלה",
-      "alwaysPresent": true
+      "alwaysPresent": true,
+      "daysOff": [
+        "יום ה"
+      ]
     },
     "בן דוד אודל": {
       "type": "מורה משלימה תקשורת"
@@ -275,7 +278,10 @@
       "noDuty": true
     },
     "הרב יאיר": {
-      "alwaysPresent": true
+      "alwaysPresent": true,
+      "daysOff": [
+        "יום ה"
+      ]
     }
   },
   "classes": {},

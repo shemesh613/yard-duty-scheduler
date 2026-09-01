@@ -158,6 +158,7 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
         boysPercent: total ? Math.round((boys / total) * 100) : null,
         homeroomOf: t.homeroomOf || null,
         dayOff: t.dayOff || null,
+        daysOff: Array.isArray(t.daysOff) ? t.daysOff : (t.dayOff ? [t.dayOff] : []),
         alwaysPresent: !!t.alwaysPresent,
         numDaysWorked: t.numDaysWorked,
         rabbi: !!t.rabbi,
