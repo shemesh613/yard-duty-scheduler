@@ -530,8 +530,22 @@ function assignDuties(model, rules, options = {}) {
   }
 
   // ---------- שלב 2: עמדות חצר/מבנה ----------
-  // מיון העמדות כדי לקבל פיזור טוב (יום אחר יום, הפסקה אחר הפסקה).
-  const dutySlots = slots.filter(s => !s.mgmt && !s._taken);
+  // סדר המילוי בתוך כל הפסקה: קודם התפקידים שמאגר המועמדים שלהם הקטן ביותר.
+  // הסיירת סגורה בפני תומכות הלמידה, ולכן אם היא ממולאת אחרונה — עמדות החצר
+  // כבר מיצו את מכסות שאר הצוות ולא נשאר מי שיסייר.
+  const roleFillOrder = (slot) => {
+    if (slot.patrol) return 0;
+    if (slot.dynamic) return 1;
+    if (slot.substitute) return 3;
+    return 2;
+  };
+  const dutySlots = slots.filter(s => !s.mgmt && !s._taken)
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => {
+      if (a.s.day !== b.s.day || a.s.break !== b.s.break) return a.i - b.i;
+      return roleFillOrder(a.s) - roleFillOrder(b.s) || a.i - b.i;
+    })
+    .map((x) => x.s);
 
   for (const slot of dutySlots) {
     const cands = eligibleForDuty(slot, teachers, state, r)
@@ -674,6 +688,16 @@ function assignDuties(model, rules, options = {}) {
 
 // איסורי שיבוץ מ-config/rules.json. כל כלל מצרף סוגי מורים, ימים ותפקידים
 // וגיזרות; שדה שאינו מופיע בכלל אינו מגביל. מחזיר true אם השיבוץ אסור.
+function sameName(a, b) {
+  const clean = (x) => String(x || '')
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean(a) === clean(b);
+}
+
 function isExcluded(teacher, slot, r) {
   const rules = Array.isArray(r.exclusions) ? r.exclusions : [];
   for (const rule of rules) {
@@ -683,7 +707,7 @@ function isExcluded(teacher, slot, r) {
     if (Array.isArray(rule.roles) && rule.roles.indexOf(slot.role) === -1) continue;
     if (Array.isArray(rule.breaks) && rule.breaks.indexOf(slot.break) === -1) continue;
     if (Array.isArray(rule.zones) && rule.zones.indexOf(slot.area) === -1) continue;
-    if (Array.isArray(rule.names) && rule.names.indexOf(teacher.name) === -1) continue;
+    if (Array.isArray(rule.names) && !rule.names.some((n) => sameName(n, teacher.name))) continue;
     // onlyRoles — היתר בלעדי: כל תפקיד אחר אסור.
     if (Array.isArray(rule.onlyRoles)) {
       if (rule.onlyRoles.indexOf(slot.role) === -1) return true;

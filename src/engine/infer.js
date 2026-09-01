@@ -19,6 +19,28 @@ const MARK_MANAGEMENT = /\(ה\)/;
 const MARK_COMMUNICATION = /\(ת\)/;
 const MARK_SUPPORT = /^תת[\s-]/;
 
+// שם מנורמל להתאמה מול קבצי ההגדרות: בלי סימוני מקרא, בלי קידומות,
+// ובלי רווחים כפולים. כך "בלולו הרב יאיר (ה)" ו-"בלולו הרב יאיר" מתאימים.
+function normalizeName(name) {
+  return String(name || '')
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// בונה מפת חיפוש שמקבלת גם שם עם סימונים וגם בלעדיהם.
+function buildLookup(map) {
+  const out = {};
+  for (const [k, v] of Object.entries(map || {})) {
+    out[k] = v;
+    const n = normalizeName(k);
+    if (n && !(n in out)) out[n] = v;
+  }
+  return out;
+}
+
 // האם המורה פטור מתורנות לפי הסימון (ל).
 function noDutyFromName(name) {
   return MARK_NO_DUTY.test(String(name || ''));
@@ -50,7 +72,7 @@ function gradeOf(clsId) {
  */
 function buildModel(rawLessons, overrides = {}) {
   const lessons = Array.isArray(rawLessons) ? rawLessons : [];
-  const ovT = (overrides && overrides.teachers) || {};
+  const ovT = buildLookup((overrides && overrides.teachers) || {});
   const ovC = (overrides && overrides.classes) || {};
   const ovMeta = (overrides && overrides.meta) || {};
   const rawMeta = (rawLessons && rawLessons._meta) || {};
@@ -129,7 +151,7 @@ function buildModel(rawLessons, overrides = {}) {
   let tid = 0;
   const teachers = Object.values(tmap).map((t) => {
     const id = 't' + ++tid;
-    const ov = ovT[t.name] || {};
+    const ov = ovT[t.name] || ovT[normalizeName(t.name)] || {};
 
     // homeroomOf מוסק: הכיתה הראשונה שמורה זה מחנך שלה.
     let homeroomOf = classIds.find((c) => homeroomOfClass[c] === t.name) || null;
