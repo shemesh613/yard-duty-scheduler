@@ -91,12 +91,37 @@ function deriveGenderOverrides(rawLessons, locations) {
   return { teachers, classes };
 }
 
+// שם מנורמל למיזוג: בלי סימוני מקרא ובלי קידומות. כך "בלולו הרב יאיר (ה)"
+// שמגיע ממסך ההגדרות מתמזג עם "בלולו הרב יאיר" שבקובץ ההגדרות הקבוע,
+// במקום לדרוס אותו כאילו היו שני אנשים.
+function nameKey(name) {
+  return String(name || '')
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // מיזוג עקיפות: base (מהמיקומים) למטה, עקיפות המשתמש גוברות.
 function mergeOverrides(base, user) {
   base = base || {}; user = user || {};
   const out = { teachers: {}, classes: {} };
-  for (const [k, v] of Object.entries(base.teachers || {})) out.teachers[k] = { ...v };
-  for (const [k, v] of Object.entries(user.teachers || {})) out.teachers[k] = { ...(out.teachers[k] || {}), ...v };
+  const byKey = {};  // שם מנורמל -> המפתח שנבחר ב-out
+
+  const put = (k, v) => {
+    const nk = nameKey(k);
+    const existing = byKey[nk];
+    if (existing) {
+      out.teachers[existing] = { ...out.teachers[existing], ...v };
+      return;
+    }
+    byKey[nk] = k;
+    out.teachers[k] = { ...v };
+  };
+
+  for (const [k, v] of Object.entries(base.teachers || {})) put(k, v);
+  for (const [k, v] of Object.entries(user.teachers || {})) put(k, v);
   for (const [k, v] of Object.entries(base.classes || {})) out.classes[k] = { ...v };
   for (const [k, v] of Object.entries(user.classes || {})) out.classes[k] = { ...(out.classes[k] || {}), ...v };
   if (user.meta) out.meta = user.meta;

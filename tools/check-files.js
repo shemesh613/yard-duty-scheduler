@@ -145,16 +145,35 @@ for (const file of files) {
   let res;
   try {
     res = runPipeline(fs.readFileSync(file), {});
-  } catch (err) {
+  } catch (err0) {
+    const err = err0;
     console.log('✗ ' + path.basename(file) + ' — הצינור נכשל: ' + err.message);
     failed++;
     continue;
   }
 
-  const ctx = { model: res.model, assignments: res.dutyPlan.assignments };
   const problems = [];
-  for (const check of CHECKS) {
-    for (const p of check.run(ctx, rules)) problems.push(check.name + ': ' + p);
+  // שתי הרצות: ישירה, ודרך מסך ההגדרות — שם הממשק שולח עקיפה לכל מורה
+  // לפי שמו בקובץ. זהו המסלול שהמשתמש עובר בו בפועל.
+  const uiOverrides = { teachers: {} };
+  for (const t of res.model.teachers) {
+    const o = { type: t.type, noDuty: !!t.noDuty, daysOff: t.daysOff || [] };
+    if (t.genderArea) o.genderArea = t.genderArea;
+    uiOverrides.teachers[t.name] = o;
+  }
+  let viaUi;
+  try {
+    viaUi = runPipeline(fs.readFileSync(file), uiOverrides);
+  } catch (err) {
+    problems.push('הרצה דרך מסך ההגדרות נכשלה: ' + err.message);
+  }
+
+  for (const [label, r2] of [['', res], ['דרך מסך ההגדרות — ', viaUi]]) {
+    if (!r2) continue;
+    const ctx = { model: r2.model, assignments: r2.dutyPlan.assignments };
+    for (const check of CHECKS) {
+      for (const p of check.run(ctx, rules)) problems.push(label + check.name + ': ' + p);
+    }
   }
 
   const head = `${path.basename(file)} — ${res.model.teachers.length} מורים, `
