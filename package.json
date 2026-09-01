@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "engine": "node src/engine/index.js samples/model.sample.json",
-    "check": "node tools/check-files.js"
+    "check": "node tools/check-files.js",
+    "check:rules": "node tools/check-rules.js"
   },
   "engines": {
     "node": ">=18"
