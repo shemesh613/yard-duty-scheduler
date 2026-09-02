@@ -81,6 +81,8 @@ const CHECKS = [
         for (const rule of rules.exclusions || []) {
           if (Array.isArray(rule.types) && !rule.types.includes(t.type)) continue;
           if (Array.isArray(rule.days) && !rule.days.includes(a.day)) continue;
+          if (Array.isArray(rule.breaks) && !rule.breaks.includes(a.break)) continue;
+          if (Array.isArray(rule.zones) && !rule.zones.includes(a.area)) continue;
           if (Array.isArray(rule.names) && !rule.names.some((n) => clean(n) === clean(t.name))) continue;
           if (Array.isArray(rule.onlyRoles)) {
             if (!rule.onlyRoles.includes(a.role)) {

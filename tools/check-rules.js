@@ -80,12 +80,36 @@ const RULES = [
     },
   },
   {
-    id: 'טבצניק הרב איתמר — פטור מתורנות',
+    id: 'טבצניק הרב איתמר — משובץ כרגיל (הפטור בוטל)',
     check: ({ model, assignments }) => {
       const t = model.teachers.find((x) => /איתמר/.test(x.name));
       if (!t) return { ok: true, detail: 'אינו בקובץ' };
       const n = assignments.filter((a) => a.teacherId === t.id).length;
-      return { ok: n === 0 && t.noDuty, detail: t.noDuty ? n + ' תורנויות' : 'לא סומן פטור!' };
+      return { ok: !t.noDuty, detail: t.noDuty ? 'עדיין מסומן פטור!' : n + ' תורנויות' };
+    },
+  },
+  {
+    id: 'הנהלה — לא בהפסקת 10 ביום שישי',
+    check: ({ model, assignments }) => {
+      const ids = new Set(model.teachers.filter((t) => t.type === 'הנהלה').map((t) => t.id));
+      const bad = assignments.filter((a) => a.day === 'יום ו' && a.break === 'אחרי 2'
+        && ids.has(a.teacherId));
+      return { ok: !bad.length, detail: bad.length ? bad.map((a) => a.teacherName).join(', ') : 'אפס' };
+    },
+  },
+  {
+    id: 'תומכת למידה עם תורנות בשישי — אין לה תורנות אחרת',
+    check: ({ model, assignments }) => {
+      const bad = [];
+      let withFri = 0;
+      for (const t of model.teachers.filter((x) => x.type === 'תומכת למידה')) {
+        const mine = assignments.filter((a) => a.teacherId === t.id);
+        const fri = mine.filter((a) => a.day === 'יום ו').length;
+        if (!fri) continue;
+        withFri++;
+        if (mine.length > fri) bad.push(t.name + ' (' + mine.length + ')');
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.join(', ') : withFri + ' תומכות בשישי, כולן עם תורנות אחת' };
     },
   },
   {

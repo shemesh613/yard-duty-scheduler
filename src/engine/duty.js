@@ -576,6 +576,7 @@ function assignDuties(model, rules, options = {}) {
       if (!withinWorkSpan(t, slot.day, slot.break, r)) return false;
       if (!genderOk(t, slot.area, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
+      if (violatesExclusiveDay(t, slot, r, st)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
       // חריגה מהמכסה מותרת בפשרה, אך עד תורנות אחת מעבר לתקרה —
       // אחרת מורה בודד סופג את כל החוסר.
@@ -642,8 +643,13 @@ function assignDuties(model, rules, options = {}) {
     // מי שנוכח כל השבוע — כלל "פחות משלושה ימים" אינו חל עליו.
     if (t.alwaysPresent) cappedBase = base;
 
+    // יום בלעדי: תורנות ביום שנקבע היא מלוא מכסת המורה, ואין לדווח על חוסר.
+    const exDay = (r.exclusiveDayByType || {})[t.type];
+    const exclusiveMet = !!exDay
+      && assignments.some((a) => a.teacherId === t.id && a.day === exDay);
+
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
-    if (total < cappedBase) {
+    if (total < cappedBase && !exclusiveMet) {
       violations.push('מורה "' + shortName(t.name) + '" (' + t.type + '): שובצו ' + total + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '.');
       quotaOk = false;
     } else {
@@ -663,6 +669,17 @@ function assignDuties(model, rules, options = {}) {
             + ' — מותרת תורנות אחת ביום.');
           quotaOk = false;
         }
+      }
+    }
+
+    // יום בלעדי — תורנות באותו יום ממצה את כל תורנויות המורה
+    if (exDay) {
+      const mine = assignments.filter((a) => a.teacherId === t.id);
+      const onDay = mine.filter((a) => a.day === exDay).length;
+      if (onDay > 0 && mine.length > onDay) {
+        violations.push('מורה "' + shortName(t.name) + '" (' + t.type + ') שובץ ב-' + exDay
+          + ' וגם בימים אחרים — תורנות ב-' + exDay + ' ממצה את כל תורנויותיו.');
+        quotaOk = false;
       }
     }
 
@@ -741,6 +758,19 @@ function assignDuties(model, rules, options = {}) {
   return { assignments, perTeacher, violations, score };
 }
 
+// יום בלעדי: לסוגי מורים מסוימים, תורנות ביום שנקבע ממצה את כל תורנויותיהם.
+// מי שקיבל תורנות באותו יום לא יקבל אחרת בשבוע, ולהפך.
+function violatesExclusiveDay(teacher, slot, r, st) {
+  const map = r.exclusiveDayByType;
+  if (!map) return false;
+  const day = map[teacher.type];
+  if (!day) return false;
+  const onDay = st.perDay[day] || 0;
+  const total = st.total || 0;
+  if (slot.day === day) return total > onDay;   // כבר יש לו תורנות ביום אחר
+  return onDay > 0;                              // כבר יש לו תורנות ביום הבלעדי
+}
+
 // איסורי שיבוץ מ-config/rules.json. כל כלל מצרף סוגי מורים, ימים ותפקידים
 // וגיזרות; שדה שאינו מופיע בכלל אינו מגביל. מחזיר true אם השיבוץ אסור.
 // שם לתצוגה בהודעות: בלי סימוני המקרא ובלי קידומות.
@@ -807,6 +837,7 @@ function eligibleForDuty(slot, teachers, state, r) {
     if (!withinWorkSpan(t, slot.day, slot.break, r)) continue; // חלון זמן
     if (!genderOk(t, slot.area, slot.day, slot.break)) continue;  // מגדר
     if (isExcluded(t, slot, r)) continue;           // איסור שיבוץ מפורש
+    if (violatesExclusiveDay(t, slot, r, st)) continue;  // יום בלעדי
     if (!freeAroundBreak(t, slot.day, slot.break)) continue; // לא מלמד בשני הצדדים
     out.push(t);
   }
