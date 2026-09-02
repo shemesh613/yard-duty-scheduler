@@ -98,6 +98,21 @@ const RULES = [
     },
   },
   {
+    id: 'יום שישי הפסקת 10 — תומכות למידה, לא מורים מקצועיים',
+    check: ({ model, assignments }) => {
+      const byId = Object.fromEntries(model.teachers.map((t) => [t.id, t]));
+      const fri = assignments.filter((a) => a.day === 'יום ו' && a.break === 'אחרי 2');
+      if (!fri.length) return { ok: true, detail: 'אין הפסקה זו בקובץ' };
+      const prof = fri.filter((a) => (byId[a.teacherId] || {}).type === 'מורה מקצועי');
+      const sup = fri.filter((a) => (byId[a.teacherId] || {}).type === 'תומכת למידה').length;
+      return {
+        ok: !prof.length,
+        detail: sup + ' תומכות מתוך ' + fri.length
+          + (prof.length ? ' · מקצועיים: ' + prof.map((a) => a.teacherName).join(', ') : ''),
+      };
+    },
+  },
+  {
     id: 'תומכת למידה עם תורנות בשישי — אין לה תורנות אחרת',
     check: ({ model, assignments }) => {
       const bad = [];

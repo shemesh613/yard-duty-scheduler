@@ -908,14 +908,26 @@ function candidateCost(t, slot, state, r, locations) {
     cost -= locationBonus(t, slot.area, locations) * 30;
   }
 
-  // (6) עמדת דינמיקלאס מאוישת בתומכת למידה.
+  // (6) העדפות סוג מורה ליום/הפסקה, מ-config/rules.json. אינן איסור:
+  // אם אין מועמד מהסוג המועדף, ישובץ אחר.
+  for (const pref of (r.preferBy || [])) {
+    if (!pref) continue;
+    if (Array.isArray(pref.days) && pref.days.indexOf(slot.day) === -1) continue;
+    if (Array.isArray(pref.breaks) && pref.breaks.indexOf(slot.break) === -1) continue;
+    if (Array.isArray(pref.roles) && pref.roles.indexOf(slot.role) === -1) continue;
+    if (Array.isArray(pref.types) && pref.types.indexOf(t.type) !== -1) {
+      cost -= (pref.weight != null ? pref.weight : 200);
+    }
+  }
+
+  // (7) עמדת דינמיקלאס מאוישת בתומכת למידה.
   if (slot.dynamic && t.type === 'תומכת למידה') cost -= 200;
 
-  // (7) מי שזמין בפחות ימים מקבל עדיפות — יש לו פחות הזדמנויות בשבוע,
+  // (8) מי שזמין בפחות ימים מקבל עדיפות — יש לו פחות הזדמנויות בשבוע,
   // ובלי זה הוא מפסיד כל תחרות ונשאר בלי תורנויות.
   cost += availableDayCount(t, r) * 12;
 
-  // (8) שובר שוויון יציב לפי id.
+  // (9) שובר שוויון יציב לפי id.
   cost += idTiebreak(t.id) * 0.001;
 
   return cost;
