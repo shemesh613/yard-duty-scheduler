@@ -434,7 +434,7 @@ function assignDuties(model, rules, options = {}) {
   // מורה שנוכח בכל יום חייב יום חופשי מוגדר — אחרת ישובץ גם ביום שאינו בא.
   for (const t of teachers) {
     if (!t.alwaysPresent || t.noDuty || daysOffOf(t).length) continue;
-    violations.push('חסר יום חופשי: "' + t.name + '" מסומן כנוכח בכל יום, ולכן שובץ '
+    violations.push('חסר יום חופשי: "' + shortName(t.name) + '" מסומן כנוכח בכל יום, ולכן שובץ '
       + 'בכל ימי השבוע. יש לקבוע את יומו החופשי במסך ההגדרות.');
   }
 
@@ -613,7 +613,7 @@ function assignDuties(model, rules, options = {}) {
     if (t.noDuty) {
       // חייב להיות אפס
       if (total > 0) {
-        violations.push('מורה "' + t.name + '" מסומן ללא תורנות (noDuty) אך שובצו לו ' + total + ' תורנויות.');
+        violations.push('מורה "' + shortName(t.name) + '" מסומן ללא תורנות (noDuty) אך שובצו לו ' + total + ' תורנויות.');
         quotaOk = false;
       }
       perTeacher[t.id] = { yard: st.yard, building: st.building, total, quotaOk };
@@ -644,7 +644,7 @@ function assignDuties(model, rules, options = {}) {
 
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
     if (total < cappedBase) {
-      violations.push('מורה "' + t.name + '" (' + t.type + '): שובצו ' + total + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '.');
+      violations.push('מורה "' + shortName(t.name) + '" (' + t.type + '): שובצו ' + total + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '.');
       quotaOk = false;
     } else {
       quotasMet++;
@@ -659,7 +659,7 @@ function assignDuties(model, rules, options = {}) {
       }
       for (const [d, n] of Object.entries(perDay)) {
         if (n > 1) {
-          violations.push('מורה "' + t.name + '" שובץ ' + n + ' פעמים ב-' + d
+          violations.push('מורה "' + shortName(t.name) + '" שובץ ' + n + ' פעמים ב-' + d
             + ' — מותרת תורנות אחת ביום.');
           quotaOk = false;
         }
@@ -668,7 +668,7 @@ function assignDuties(model, rules, options = {}) {
 
     // חריגה מעבר למכסה+מ"מ? (בלי התורנויות שהכללים מחייבים)
     if (counted > expected) {
-      violations.push('מורה "' + t.name + '" שובץ ' + counted + ' תורנויות, מעבר למכסה המרבית ' + expected + '.');
+      violations.push('מורה "' + shortName(t.name) + '" שובץ ' + counted + ' תורנויות, מעבר למכסה המרבית ' + expected + '.');
       quotaOk = false;
     }
 
@@ -680,7 +680,7 @@ function assignDuties(model, rules, options = {}) {
       const tol = Math.max(1, Math.ceil(n * (r.balanceTolerancePerc != null ? r.balanceTolerancePerc : 0.5)));
       if (diff > tol) {
         const expected = Math.round(n * share);
-        violations.push('מורה "' + t.name + '": חוסר איזון חצר/מבנה — ' + st.yard + ' חצר מול ' + st.building
+        violations.push('מורה "' + shortName(t.name) + '": חוסר איזון חצר/מבנה — ' + st.yard + ' חצר מול ' + st.building
           + ' מבנה (המצופה לפי המצבת: כ-' + expected + ' חצר מתוך ' + n + ').');
         quotaOk = false;
       }
@@ -690,15 +690,15 @@ function assignDuties(model, rules, options = {}) {
     const myAssigns = assignments.filter(a => a.teacherId === t.id && a.role !== 'תחילת יום' && a.role !== 'סוף יום');
     for (const a of myAssigns) {
       if (!genderOk(t, a.area, a.day, a.break)) {
-        violations.push('מורה "' + t.name + '" שובץ באזור "' + a.area + '" בניגוד למתחם המגדרי שלו (' + effectiveGender(t, a.day, a.break) + ').');
+        violations.push('מורה "' + shortName(t.name) + '" שובץ באזור "' + a.area + '" בניגוד למתחם המגדרי שלו (' + effectiveGender(t, a.day, a.break) + ').');
         quotaOk = false;
       }
       if (!withinWorkSpan(t, a.day, a.break, r)) {
-        violations.push('מורה "' + t.name + '" שובץ ב-' + a.day + ' / ' + a.break + ' מחוץ לטווח העבודה שלו באותו יום.');
+        violations.push('מורה "' + shortName(t.name) + '" שובץ ב-' + a.day + ' / ' + a.break + ' מחוץ לטווח העבודה שלו באותו יום.');
         quotaOk = false;
       }
       if (isExcluded(t, a, r)) {
-        violations.push('מורה "' + t.name + '" (' + t.type + ') שובץ ל' + a.role
+        violations.push('מורה "' + shortName(t.name) + '" (' + t.type + ') שובץ ל' + a.role
           + ' ב-' + a.day + ' בניגוד לאיסור שיבוץ מפורש.');
         quotaOk = false;
       }
@@ -743,6 +743,16 @@ function assignDuties(model, rules, options = {}) {
 
 // איסורי שיבוץ מ-config/rules.json. כל כלל מצרף סוגי מורים, ימים ותפקידים
 // וגיזרות; שדה שאינו מופיע בכלל אינו מגביל. מחזיר true אם השיבוץ אסור.
+// שם לתצוגה בהודעות: בלי סימוני המקרא ובלי קידומות.
+function shortName(n) {
+  return String(n || '')
+    .replace(/\((?:ל|ה|ת)\)/g, '')
+    .replace(/^תת[\s-]+/, '')
+    .replace(/^ת-\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function sameName(a, b) {
   const clean = (x) => String(x || '')
     .replace(/\((?:ל|ה|ת)\)/g, '')

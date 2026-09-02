@@ -145,6 +145,7 @@ app.post('/api/run', upload.single('file'), (req, res) => {
       html: html || '',
       // רשימת השיבוצים — כדי שהממשק יוכל להציג טבלה ולאפשר הסרה ידנית.
       assignments: (dutyPlan && Array.isArray(dutyPlan.assignments)) ? dutyPlan.assignments : [],
+      violations: (dutyPlan && Array.isArray(dutyPlan.violations)) ? dutyPlan.violations : [],
       fileId,
       downloadId: workbookBuffer ? downloadId : null
     });

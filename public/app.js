@@ -33,6 +33,11 @@
   const restartBtn = $('restartBtn');
   const backToSettingsBtn = $('backToSettingsBtn');
 
+  const issuesCard = $('issuesCard');
+  const issuesList = $('issuesList');
+  const issuesCount = $('issuesCount');
+  const issuesToggle = $('issuesToggle');
+
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
   const removedNote = $('removedNote');
@@ -49,6 +54,7 @@
   let lastSummary = null;
   let lastDownloadId = null;
   let restoring = false;
+  let violations = [];
 
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
@@ -764,6 +770,8 @@
     });
 
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
+    violations = Array.isArray(data.violations) ? data.violations : [];
+    renderIssues();
     if (data.fileId) fileId = data.fileId;
     lastSummary = data.summary || null;
     lastDownloadId = data.downloadId || null;
@@ -787,6 +795,46 @@
     show(results);
     updateSteps('results');
     results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------- נקודות לבדיקה ----------
+  // ההפרות אינן שגיאות: הלוח תקין, אלה מקומות שבהם לא ניתן היה לעמוד
+  // בכל הכללים. הצגתן בממשק חוסכת חיפוש בגיליון הבקרה שבאקסל.
+
+  // סיווג לפי סוג, כדי שיהיה ברור מה דורש טיפול ומה רק לידיעה.
+  function issueKind(text) {
+    if (/נדרשה פשרה/.test(text)) return { label: 'פשרה באיוש', cls: 'warn' };
+    if (/חסר יום חופשי/.test(text)) return { label: 'חסר נתון', cls: 'must' };
+    if (/מכסת בסיס/.test(text)) return { label: 'לא הגיע למכסה', cls: 'info' };
+    if (/מעבר למכסה/.test(text)) return { label: 'מעל המכסה', cls: 'warn' };
+    if (/פעמים ב/.test(text)) return { label: 'תורנות כפולה ביום', cls: 'must' };
+    if (/בניגוד/.test(text)) return { label: 'סתירת כלל', cls: 'must' };
+    if (/איזון/.test(text)) return { label: 'איזון חצר/מבנה', cls: 'info' };
+    return { label: 'לבדיקה', cls: 'info' };
+  }
+
+  function renderIssues() {
+    if (!issuesCard) return;
+    if (!violations.length) { hide(issuesCard); return; }
+
+    const order = { must: 0, warn: 1, info: 2 };
+    const items = violations
+      .map((v) => ({ text: v, kind: issueKind(v) }))
+      .sort((a, b) => order[a.kind.cls] - order[b.kind.cls]);
+
+    issuesList.innerHTML = items.map((it) =>
+      `<li class="issue ${it.kind.cls}"><span class="issue-tag">${it.kind.label}</span>`
+      + `<span class="issue-text">${it.text}</span></li>`).join('');
+    issuesCount.textContent = violations.length;
+    show(issuesCard);
+  }
+
+  if (issuesToggle) {
+    issuesToggle.addEventListener('click', () => {
+      const hidden = issuesList.hasAttribute('hidden');
+      if (hidden) { issuesList.removeAttribute('hidden'); issuesToggle.textContent = 'הסתר'; }
+      else { issuesList.setAttribute('hidden', ''); issuesToggle.textContent = 'הצג'; }
+    });
   }
 
   // ================= הלוח הגדול לפני הפצה =================
