@@ -716,7 +716,7 @@
 
       // המורה היוצא נחסם מהעמדה, והנכנס ננעץ אליה. שאר הלוח נשמר.
       removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
-      manualPins.push({ teacher: to, day: a.day, break: a.break, area: a.area, role: a.role });
+      manualPins.push({ teacher: to, day: a.day, break: a.break, area: a.area, role: a.role, manual: true });
       computePlan(true);
     });
   }
@@ -912,8 +912,8 @@
     // שני הצדדים נחסמים ממקומם הנוכחי וננעצים במקום החדש.
     removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
     removed.push({ teacher: b.teacherName, day: b.day, break: b.break });
-    manualPins.push({ teacher: b.teacherName, day: a.day, break: a.break, area: a.area, role: a.role });
-    manualPins.push({ teacher: a.teacherName, day: b.day, break: b.break, area: b.area, role: b.role });
+    manualPins.push({ teacher: b.teacherName, day: a.day, break: a.break, area: a.area, role: a.role, manual: true });
+    manualPins.push({ teacher: a.teacherName, day: b.day, break: b.break, area: b.area, role: b.role, manual: true });
     saveState();
     computePlan(true);
   }

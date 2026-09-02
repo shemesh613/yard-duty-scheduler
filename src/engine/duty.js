@@ -475,9 +475,11 @@ function assignDuties(model, rules, options = {}) {
   };
 
   // שיבוצים משומרים — נתפסים ראשונים, לפני כל חישוב אוטומטי.
+  // שיבוץ שסומן manual הוא הוראה מפורשת של המשתמש וגובר על החסימה:
+  // בהחלפה בתוך אותה הפסקה שני הצדדים נחסמים ממנה, ובלי זה ההחלפה מתבטלת.
   for (const p of options.pinned || []) {
     if (!p || !p.teacher) continue;
-    if (blockedSet.has(p.teacher + '|' + p.day + '|' + p.break)) continue;
+    if (!p.manual && blockedSet.has(p.teacher + '|' + p.day + '|' + p.break)) continue;
     const t = teachers.find(x => x.name === p.teacher);
     if (!t) continue;
     const st = state.get(t.id);
@@ -517,6 +519,7 @@ function assignDuties(model, rules, options = {}) {
     const cands = management.filter(t => {
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
+      if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return false;
       if (!worksOnDay(t, slot.day)) return false;
       if (isDayOff(t, slot.day)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
@@ -567,6 +570,7 @@ function assignDuties(model, rules, options = {}) {
       if (t.type === 'חוגים') return false;
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
+      if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return false;
       if (!worksOnDay(t, slot.day)) return false;
       if (isDayOff(t, slot.day)) return false;
       if (!withinWorkSpan(t, slot.day, slot.break, r)) return false;
@@ -644,6 +648,22 @@ function assignDuties(model, rules, options = {}) {
       quotaOk = false;
     } else {
       quotasMet++;
+    }
+
+    // יותר מתורנות אחת ביום?
+    if (r.oneDutyPerDay) {
+      const perDay = {};
+      for (const a of assignments) {
+        if (a.teacherId !== t.id) continue;
+        perDay[a.day] = (perDay[a.day] || 0) + 1;
+      }
+      for (const [d, n] of Object.entries(perDay)) {
+        if (n > 1) {
+          violations.push('מורה "' + t.name + '" שובץ ' + n + ' פעמים ב-' + d
+            + ' — מותרת תורנות אחת ביום.');
+          quotaOk = false;
+        }
+      }
     }
 
     // חריגה מעבר למכסה+מ"מ? (בלי התורנויות שהכללים מחייבים)
@@ -770,6 +790,7 @@ function eligibleForDuty(slot, teachers, state, r) {
       continue;                                    // מכסת התורנויות הרגילות מולאה
     }
     if (st.assignedSlots.has(slot.day + '|' + slot.break)) continue; // כבר משובץ באותה הפסקה
+    if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) continue;  // תורנות אחת ביום
     if (!worksOnDay(t, slot.day)) continue;
     // ימי חופש שנקבעו ידנית — אין תורנות בהם גם אם המורה בבית הספר.
     if (isDayOff(t, slot.day)) continue;

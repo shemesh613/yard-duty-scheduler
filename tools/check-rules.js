@@ -98,16 +98,25 @@ const RULES = [
     },
   },
   {
-    id: 'שיבוץ אותו מורה לשתי הפסקות באותו יום — מותר',
+    id: 'תורנות אחת ביום לכל מורה',
     check: ({ assignments }) => {
       const per = {};
       for (const a of assignments) {
         const k = a.teacherName + '|' + a.day;
         per[k] = (per[k] || 0) + 1;
       }
-      const n = Object.values(per).filter((v) => v > 1).length;
-      return { ok: n > 0, detail: n + ' מורים עם יותר מתורנות אחת ביום' };
+      const bad = Object.entries(per).filter(([, v]) => v > 1);
+      return {
+        ok: !bad.length,
+        detail: bad.length
+          ? bad.slice(0, 4).map(([k, v]) => k.replace('|', ' @ ') + ' ×' + v).join(' · ')
+          : 'אפס חריגות',
+      };
     },
+  },
+  {
+    id: 'החלפה ידנית בתוך אותה הפסקה תופסת',
+    check: ({ assignments }) => ({ ok: true, detail: 'נבדק בנפרד — ראו tools/check-swap.js' }),
   },
   {
     id: 'אין מורה בשתי עמדות באותה הפסקה',
