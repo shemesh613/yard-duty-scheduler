@@ -535,6 +535,8 @@ function assignDuties(model, rules, options = {}) {
       if (isBlocked(t, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
       if (st.total >= st.quota) return false;
+      // תחילת/סוף יום הן תורנויות רגילות ואינן חורגות ממכסת הבסיס.
+      if ((st.total - (st.sub || 0)) >= baseQuota(t, r)) return false;
       return true;
     });
     if (!cands.length) continue;
@@ -588,10 +590,15 @@ function assignDuties(model, rules, options = {}) {
       if (isExcluded(t, slot, r)) return false;
       if (violatesExclusiveDay(t, slot, r, st)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
-      // חריגה מהמכסה מותרת בפשרה, אך עד תורנות אחת מעבר לתקרה —
-      // אחרת מורה בודד סופג את כל החוסר.
-      const over = st.total - (st.quota + (r.relaxedOverflow != null ? r.relaxedOverflow : 1));
-      if (over >= 0) return false;
+      // מכסת התורנויות הרגילות אינה נפרצת גם בפשרה — היא הוראת ההנהלה.
+      // מה שכן מתרפה: ההצמדות לשיעורים סביב ההפסקה, ותקרת המ"מ.
+      if (slot.substitute) {
+        const overSub = (st.sub || 0) - ((r.extraSubstitution || 0)
+          + (r.relaxedOverflow != null ? r.relaxedOverflow : 1));
+        if (overSub >= 0) return false;
+      } else if ((st.total - (st.sub || 0)) >= baseQuota(t, r)) {
+        return false;
+      }
       return true;
     });
     if (!relaxed.length) continue;

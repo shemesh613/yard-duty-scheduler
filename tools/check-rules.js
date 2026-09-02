@@ -145,6 +145,21 @@ const RULES = [
     },
   },
   {
+    id: 'מכסת התורנויות הרגילות אינה נפרצת',
+    check: ({ model, assignments }, rules) => {
+      const bad = [];
+      for (const t of model.teachers) {
+        if (t.noDuty || t.type === 'חוגים') continue;
+        // תורנויות תחילת היום של הרב הן חובה יומית ואינן נספרות במכסה.
+        if (t.rabbi && t.type === 'הנהלה') continue;
+        const q = rules.quotas[t.type] != null ? rules.quotas[t.type] : rules.quotas._default;
+        const reg = assignments.filter((a) => a.teacherId === t.id && a.role !== 'מ"מ').length;
+        if (reg > q) bad.push(t.name + ' (' + t.type + '): ' + reg + ' מול ' + q);
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(' · ') : 'אפס חריגות' };
+    },
+  },
+  {
     id: 'תורנות אחת ביום לכל מורה',
     check: ({ assignments }) => {
       const per = {};
