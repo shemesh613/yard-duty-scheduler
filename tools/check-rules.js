@@ -321,8 +321,8 @@ console.log();
 
 let failed = 0;
 for (const rule of RULES) {
-  const a = rule.check({ model: direct.model, assignments: direct.dutyPlan.assignments });
-  const b = rule.check({ model: viaUi.model, assignments: viaUi.dutyPlan.assignments });
+  const a = rule.check({ model: direct.model, assignments: direct.dutyPlan.assignments }, rules);
+  const b = rule.check({ model: viaUi.model, assignments: viaUi.dutyPlan.assignments }, rules);
   const ok = a.ok && b.ok;
   if (!ok) failed++;
   console.log((ok ? '✓ ' : '✗ ') + rule.id);
