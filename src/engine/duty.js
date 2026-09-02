@@ -472,6 +472,16 @@ function assignDuties(model, rules, options = {}) {
     st.total++;
     st.perDay[slot.day] = (st.perDay[slot.day] || 0) + 1;
     st.assignedSlots.add(slot.day + '|' + slot.break);
+
+    // מוני היום הבלעדי — משמשים לבדיקת הזכאות לפטור.
+    const exCfg = exclusiveDayOf(t, r);
+    if (exCfg) {
+      if (slot.day === exCfg.day) {
+        if (countsForExclusive(slot.role, exCfg)) st.exQualifying = (st.exQualifying || 0) + 1;
+      } else {
+        st.exElsewhere = (st.exElsewhere || 0) + 1;
+      }
+    }
   };
 
   // שיבוצים משומרים — נתפסים ראשונים, לפני כל חישוב אוטומטי.
@@ -643,10 +653,10 @@ function assignDuties(model, rules, options = {}) {
     // מי שנוכח כל השבוע — כלל "פחות משלושה ימים" אינו חל עליו.
     if (t.alwaysPresent) cappedBase = base;
 
-    // יום בלעדי: תורנות ביום שנקבע היא מלוא מכסת המורה, ואין לדווח על חוסר.
-    const exDay = (r.exclusiveDayByType || {})[t.type];
-    const exclusiveMet = !!exDay
-      && assignments.some((a) => a.teacherId === t.id && a.day === exDay);
+    // יום בלעדי: תורנות מזכה ביום שנקבע היא מלוא מכסת המורה.
+    const exCfg = exclusiveDayOf(t, r);
+    const exclusiveMet = !!exCfg && assignments.some((a) =>
+      a.teacherId === t.id && a.day === exCfg.day && countsForExclusive(a.role, exCfg));
 
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
     if (total < cappedBase && !exclusiveMet) {
@@ -672,13 +682,14 @@ function assignDuties(model, rules, options = {}) {
       }
     }
 
-    // יום בלעדי — תורנות באותו יום ממצה את כל תורנויות המורה
-    if (exDay) {
+    // יום בלעדי — תורנות מזכה באותו יום ממצה את כל תורנויות המורה
+    if (exCfg) {
       const mine = assignments.filter((a) => a.teacherId === t.id);
-      const onDay = mine.filter((a) => a.day === exDay).length;
-      if (onDay > 0 && mine.length > onDay) {
-        violations.push('מורה "' + shortName(t.name) + '" (' + t.type + ') שובץ ב-' + exDay
-          + ' וגם בימים אחרים — תורנות ב-' + exDay + ' ממצה את כל תורנויותיו.');
+      const qualifying = mine.filter((a) => a.day === exCfg.day && countsForExclusive(a.role, exCfg)).length;
+      const elsewhere = mine.filter((a) => a.day !== exCfg.day).length;
+      if (qualifying > 0 && elsewhere > 0) {
+        violations.push('מורה "' + shortName(t.name) + '" (' + t.type + ') שובץ ב-' + exCfg.day
+          + ' וגם בימים אחרים — תורנות ב-' + exCfg.day + ' ממצה את כל תורנויותיו.');
         quotaOk = false;
       }
     }
@@ -760,15 +771,35 @@ function assignDuties(model, rules, options = {}) {
 
 // יום בלעדי: לסוגי מורים מסוימים, תורנות ביום שנקבע ממצה את כל תורנויותיהם.
 // מי שקיבל תורנות באותו יום לא יקבל אחרת בשבוע, ולהפך.
+// ההגדרה היא שם יום, או { day, excludeRoles } — תפקידים שאינם מזכים בפטור.
+function exclusiveDayOf(teacher, r) {
+  const cfg = (r.exclusiveDayByType || {})[teacher.type];
+  if (!cfg) return null;
+  if (typeof cfg === 'string') return { day: cfg, excludeRoles: [] };
+  if (!cfg.day) return null;
+  return { day: cfg.day, excludeRoles: Array.isArray(cfg.excludeRoles) ? cfg.excludeRoles : [] };
+}
+
+// האם התורנות נחשבת לעניין הפטור. תפקידים מוחרגים (למשל מ"מ) אינם נחשבים.
+function countsForExclusive(role, cfg) {
+  return cfg.excludeRoles.indexOf(role) === -1;
+}
+
 function violatesExclusiveDay(teacher, slot, r, st) {
-  const map = r.exclusiveDayByType;
-  if (!map) return false;
-  const day = map[teacher.type];
-  if (!day) return false;
-  const onDay = st.perDay[day] || 0;
-  const total = st.total || 0;
-  if (slot.day === day) return total > onDay;   // כבר יש לו תורנות ביום אחר
-  return onDay > 0;                              // כבר יש לו תורנות ביום הבלעדי
+  const cfg = exclusiveDayOf(teacher, r);
+  if (!cfg) return false;
+
+  // המונים מתוחזקים ב-takeSlot: תורנויות מזכות ביום הבלעדי, ותורנויות בימים אחרים.
+  const qualifying = st.exQualifying || 0;
+  const elsewhere = st.exElsewhere || 0;
+
+  if (slot.day === cfg.day) {
+    // ביום הבלעדי: אם כבר יש לו תורנות בימים אחרים, אסור לתת לו כאן
+    // תורנות מזכה — אחרת ייווצר פטור למי שכבר עובד בשבוע.
+    return countsForExclusive(slot.role, cfg) && elsewhere > 0;
+  }
+  // ביום אחר: אסור אם כבר יש לו תורנות מזכה ביום הבלעדי.
+  return qualifying > 0;
 }
 
 // איסורי שיבוץ מ-config/rules.json. כל כלל מצרף סוגי מורים, ימים ותפקידים

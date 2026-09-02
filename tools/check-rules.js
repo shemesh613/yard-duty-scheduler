@@ -113,18 +113,26 @@ const RULES = [
     },
   },
   {
-    id: 'תומכת למידה עם תורנות בשישי — אין לה תורנות אחרת',
+    id: 'תומכת למידה עם תורנות אמיתית בשישי — פטורה משאר השבוע',
     check: ({ model, assignments }) => {
       const bad = [];
-      let withFri = 0;
+      let exempt = 0;
+      let mmOnly = 0;
       for (const t of model.teachers.filter((x) => x.type === 'תומכת למידה')) {
         const mine = assignments.filter((a) => a.teacherId === t.id);
-        const fri = mine.filter((a) => a.day === 'יום ו').length;
-        if (!fri) continue;
-        withFri++;
-        if (mine.length > fri) bad.push(t.name + ' (' + mine.length + ')');
+        const fri = mine.filter((a) => a.day === 'יום ו');
+        if (!fri.length) continue;
+        // תורנות מ"מ אינה מזכה בפטור.
+        const real = fri.filter((a) => a.role !== 'מ"מ').length;
+        const other = mine.filter((a) => a.day !== 'יום ו').length;
+        if (!real) { mmOnly++; continue; }
+        if (other) bad.push(t.name); else exempt++;
       }
-      return { ok: !bad.length, detail: bad.length ? bad.join(', ') : withFri + ' תומכות בשישי, כולן עם תורנות אחת' };
+      return {
+        ok: !bad.length,
+        detail: bad.length ? bad.join(', ')
+          : exempt + ' פטורות · ' + mmOnly + ' עם מ"מ בלבד, ממשיכות לעבוד',
+      };
     },
   },
   {
