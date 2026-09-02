@@ -351,20 +351,28 @@
     };
   }
 
+  // המצב נשמר בשני מקומות: בשרת — כדי שגם מי שנכנס ממחשב אחר יראה אותו,
+  // ובדפדפן — כי בשרת החינמי הדיסק נמחק בכל הפעלה מחדש, והשמירה בו אובדת.
+  const LOCAL_KEY = 'yardDutyState';
+
   let saveTimer = null;
   function saveState() {
     if (restoring || !fileId) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
+      const st = currentState();
+      st.savedAt = new Date().toISOString();
+      try { localStorage.setItem(LOCAL_KEY, JSON.stringify(st)); } catch (_) { /* אין מקום */ }
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: currentState() }),
+        body: JSON.stringify({ state: st }),
       }).catch(() => { /* שמירה שקטה — לא מפריעים לעבודה */ });
     }, 400);
   }
 
   function clearState() {
+    try { localStorage.removeItem(LOCAL_KEY); } catch (_) { /* אין גישה */ }
     fetch('/api/state', { method: 'DELETE' }).catch(() => {});
   }
 
@@ -431,7 +439,13 @@
       const resp = await fetch('/api/state');
       const data = await resp.json();
       st = data && data.state;
-    } catch (_) { return; }
+    } catch (_) { /* אין שרת — ננסה מהדפדפן */ }
+
+    // גיבוי מקומי: שורד גם הפעלה מחדש של השרת, שמוחקת את הדיסק.
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); } catch (_) { /* אין */ }
+    if (local && (!st || (local.savedAt || '') > (st.savedAt || ''))) st = local;
+
     if (!st || !st.fileId) return;
 
     const when = st.savedAt ? new Date(st.savedAt).toLocaleString('he-IL') : '';
@@ -448,9 +462,26 @@
     const main = document.querySelector('main.container');
     main.insertBefore(bar, main.firstChild);
 
-    bar.querySelector('#restoreYes').addEventListener('click', () => {
+    bar.querySelector('#restoreYes').addEventListener('click', async () => {
       applyState(st);
       bar.remove();
+      // הקובץ עצמו נשמר בשרת ועלול להימחק בהפעלה מחדש. אם אינו קיים,
+      // הלוח מוצג אך חישוב מחדש ידרוש העלאה חוזרת.
+      try {
+        const fd = new FormData();
+        fd.append('fileId', st.fileId);
+        fd.append('overrides', '{}');
+        const probe = await fetch('/api/run', { method: 'POST', body: fd });
+        const pd = await probe.json();
+        if (!pd.ok) throw new Error('missing');
+      } catch (_) {
+        const note = document.createElement('div');
+        note.className = 'restore-bar warn';
+        note.textContent = 'הלוח שוחזר, אך קובץ השעות אינו זמין עוד בשרת. '
+          + 'לשינויים ולחישוב מחדש — העלו את הקובץ שוב.';
+        const main = document.querySelector('main.container');
+        main.insertBefore(note, main.firstChild);
+      }
     });
     bar.querySelector('#restoreNo').addEventListener('click', () => {
       clearState();
