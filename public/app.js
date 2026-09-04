@@ -55,6 +55,9 @@
   let lastDownloadId = null;
   let restoring = false;
   let violations = [];
+  // true בהרצה חדשה, false בעדכון אחרי שינוי ידני — כדי לא לגלול
+  // את המשתמש בחזרה לראש הדף בכל החלפה או הסרה.
+  let freshRun = true;
 
   const TEACHER_TYPES = ['מחנכת', 'תומכת למידה', 'מורה מקצועי', 'מורה משלימה תקשורת', 'הנהלה', 'חוגים'];
 
@@ -591,10 +594,19 @@
   }
 
   // --- שלב 2: חישוב הלוחות ---
+  let keepScroll = null;
+
   // חישוב הלוח. keepRest=true משמר את שאר השיבוצים ומחליף רק את מה שהוסר.
   async function computePlan(keepRest) {
     if (!selectedFile && !fileId) return;
-    hide(errorBox); show(loading);
+    // עדכון אחרי שינוי ידני — לא מציגים מחוון טעינה על כל המסך ולא גוללים.
+    freshRun = !keepRest;
+    if (keepRest) {
+      keepScroll = window.scrollY;
+    } else {
+      show(loading);
+    }
+    hide(errorBox);
     runBtn.disabled = true;
     if (redistributeBtn) redistributeBtn.disabled = true;
     try {
@@ -625,6 +637,7 @@
         return;
       }
       renderResults(data);
+      if (keepRest) flashSaved();
     } catch (err) {
       hide(loading);
       const msg = (err && err.message) || String(err);
@@ -794,7 +807,29 @@
 
     show(results);
     updateSteps('results');
-    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (freshRun) {
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (keepScroll != null) {
+      // שמירת מיקום הגלילה — שינוי ידני לא אמור להזיז את המסך.
+      window.scrollTo({ top: keepScroll });
+      keepScroll = null;
+    }
+  }
+
+  // חיווי קצר שהשינוי נקלט — מחליף את קפיצת המסך שהייתה קודם.
+  let flashTimer = null;
+  function flashSaved() {
+    let el = document.getElementById('changeFlash');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'changeFlash';
+      el.className = 'change-flash';
+      document.body.appendChild(el);
+    }
+    el.textContent = 'השינוי נקלט';
+    el.classList.add('show');
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => el.classList.remove('show'), 1600);
   }
 
   // ---------- נקודות לבדיקה ----------
