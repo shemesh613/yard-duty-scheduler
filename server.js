@@ -184,6 +184,9 @@ app.post('/api/inspect', upload.single('file'), (req, res) => {
     const eng = require('./src/engine/index.js');
     const locOv = eng.deriveGenderOverrides(raw, eng.loadLocations());
     const baseOv = eng.mergeOverrides(locOv, eng.loadFileOverrides());
+    // ימי החופש שברירת המחדל לפי סוג — אחרת המסך מציג תיבות ריקות,
+    // ובחישוב הוא שולח בחזרה "אין ימי חופש" ומבטל את ההגדרה.
+    baseOv.defaultDaysOffByType = eng.loadRules().defaultDaysOffByType || {};
     const model = infer.buildModel(raw, baseOv);
 
     // פילוח השיעורים של כל מורה לפי מגדר הכיתות — כדי להציג במסך את הנתון
