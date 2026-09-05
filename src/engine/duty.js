@@ -595,6 +595,45 @@ function assignDuties(model, rules, options = {}) {
     takeSlot(slot, cands[0]);
   }
 
+  // מסביר מדוע אין מועמד לעמדה: סופר כמה נפסלו ומאיזו סיבה.
+  // כך אפשר לדעת מיד מה חוסם, במקום לנחש.
+  function whyEmpty(slot) {
+    const reasons = {
+      'פטורים מתורנות': 0,
+      'יום חופש': 0,
+      'אינם עובדים ביום זה': 0,
+      'מחוץ לשעות העבודה': 0,
+      'מיצו את מכסתם': 0,
+      'כבר משובצים באותה הפסקה': 0,
+      'מתחם מגדרי אחר': 0,
+      'איסור שיבוץ מפורש': 0,
+      'תורנות אחת ביום': 0,
+      'מלמדים משני צדי ההפסקה': 0,
+    };
+    for (const t of teachers) {
+      const st = state.get(t.id);
+      if (t.noDuty) { reasons['פטורים מתורנות']++; continue; }
+      if (t.type === 'חוגים') { reasons['פטורים מתורנות']++; continue; }
+      if (t.type === r.managementType && !slot.patrol && !slot.mgmt) { reasons['איסור שיבוץ מפורש']++; continue; }
+      if (isDayOff(t, slot.day)) { reasons['יום חופש']++; continue; }
+      if (!worksOnDay(t, slot.day)) { reasons['אינם עובדים ביום זה']++; continue; }
+      if (st.assignedSlots.has(slot.day + '|' + slot.break)) { reasons['כבר משובצים באותה הפסקה']++; continue; }
+      if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) { reasons['תורנות אחת ביום']++; continue; }
+      if (isExcluded(t, slot, r)) { reasons['איסור שיבוץ מפורש']++; continue; }
+      if (violatesExclusiveDay(t, slot, r, st)) { reasons['איסור שיבוץ מפורש']++; continue; }
+      if (!withinWorkSpan(t, slot.day, slot.break, r)) { reasons['מחוץ לשעות העבודה']++; continue; }
+      if (!genderOk(t, slot.area, slot.day, slot.break)) { reasons['מתחם מגדרי אחר']++; continue; }
+      const cap = slot.substitute ? (st.sub || 0) >= (r.extraSubstitution || 0)
+        : (st.total - (st.sub || 0)) >= baseQuota(t, r);
+      if (cap) { reasons['מיצו את מכסתם']++; continue; }
+      if (!freeAroundBreak(t, slot.day, slot.break)) { reasons['מלמדים משני צדי ההפסקה']++; continue; }
+    }
+    const top = Object.entries(reasons).filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, n]) => k + ' (' + n + ')');
+    return top.join(' · ');
+  }
+
   // ---------- שלב 3: מילוי אחרון של עמדות שנותרו ריקות ----------
   // עמדה ריקה גרועה מעמדה שאוישה בפשרה. כאן מרפים את שני האילוצים הרכים
   // בלבד — הצמדות לשיעורים סביב ההפסקה, ותקרת המכסה — ומדווחים על כל
@@ -626,7 +665,13 @@ function assignDuties(model, rules, options = {}) {
       }
       return true;
     });
-    if (!relaxed.length) continue;
+    if (!relaxed.length) {
+      violations.push('עמדה לא אוישה: ' + slot.role
+        + (slot.area ? ' · ' + slot.area : '')
+        + ' ב-' + slot.day + ' / ' + slot.break
+        + '. הסיבות: ' + (whyEmpty(slot) || 'לא נמצא מועמד') + '.');
+      continue;
+    }
     relaxed.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
     const chosen = relaxed[0];
     takeSlot(slot, chosen);
