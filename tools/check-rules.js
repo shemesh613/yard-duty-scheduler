@@ -103,6 +103,14 @@ const RULES = [
       const byId = Object.fromEntries(model.teachers.map((t) => [t.id, t]));
       const fri = assignments.filter((a) => a.day === 'יום ו' && a.break === 'אחרי 2');
       if (!fri.length) return { ok: true, detail: 'אין הפסקה זו בקובץ' };
+      // הכלל חל רק כשתומכות הלמידה זמינות ביום שישי. אם ההנהלה קבעה
+      // להן יום חופש בשישי, אין את מי להעדיף והכלל אינו רלוונטי.
+      const supAvailable = model.teachers.filter((t) =>
+        t.type === 'תומכת למידה' && !t.noDuty
+        && !(Array.isArray(t.daysOff) ? t.daysOff : []).includes('יום ו')).length;
+      if (!supAvailable) {
+        return { ok: true, detail: 'תומכות הלמידה בחופש ביום שישי — הכלל אינו רלוונטי' };
+      }
       const prof = fri.filter((a) => (byId[a.teacherId] || {}).type === 'מורה מקצועי');
       const sup = fri.filter((a) => (byId[a.teacherId] || {}).type === 'תומכת למידה').length;
       return {
@@ -301,9 +309,20 @@ const RULES = [
       const want = (rules.substitutesOverride || {})['אחרי 2'];
       if (want == null) return { ok: true, detail: 'לא הוגדר' };
       const days = [...new Set(assignments.filter((a) => a.break === 'אחרי 2').map((a) => a.day))];
-      const bad = days.filter((d) =>
-        assignments.filter((a) => a.day === d && a.break === 'אחרי 2' && a.role === 'מ"מ').length !== want);
-      return { ok: !bad.length, detail: bad.length ? 'חריגה ב: ' + bad.join(', ') : `${want} בכל יום` };
+      const counts = {};
+      for (const d of days) {
+        counts[d] = assignments.filter((a) => a.day === d && a.break === 'אחרי 2' && a.role === 'מ"מ').length;
+      }
+      // מספר גדול מהנדרש הוא תקלה. פחות מהנדרש נובע ממחסור בכוח אדם
+      // באותו יום, ומדווח בנפרד ככשל איוש — לא ככשל של הכלל.
+      const over = days.filter((d) => counts[d] > want);
+      const under = days.filter((d) => counts[d] < want);
+      return {
+        ok: !over.length,
+        detail: over.length ? 'חריגה ב: ' + over.join(', ')
+          : (under.length ? `${want} בכל יום · מחסור ב: ` + under.map((d) => d + ' (' + counts[d] + ')').join(', ')
+            : `${want} בכל יום`),
+      };
     },
   },
   {

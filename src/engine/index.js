@@ -145,8 +145,10 @@ function runPipeline(input, overrides = {}) {
   const locationOverrides = deriveGenderOverrides(rawLessons, loadLocations());
   let mergedOverrides = mergeOverrides(locationOverrides, loadFileOverrides());
   mergedOverrides = mergeOverrides(mergedOverrides, overrides);
-  const model = infer.buildModel(rawLessons, mergedOverrides);
   const rules = loadRules();
+  // ימי חופש כברירת מחדל לפי סוג מורה — נקראים מהכללים ומועברים להסקה.
+  mergedOverrides.defaultDaysOffByType = rules.defaultDaysOffByType || {};
+  const model = infer.buildModel(rawLessons, mergedOverrides);
   // לוח המגרש הוסר: הוא חילק רק ל"חצר בנים"/"חצר בנות" בלי מגרשים ממשיים,
   // ולא שימש את שיבוץ התורנויות. ראו DECISIONS.md.
   const yardPlan = null;

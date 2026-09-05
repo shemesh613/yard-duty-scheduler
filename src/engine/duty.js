@@ -306,6 +306,9 @@ function locationBonus(teacher, area, locations) {
 
 // כמה עמדות תורנות (חצר/מבנה) בהפסקה נתונה — עם התחשבות בהפסקות מיוחדות (דינמיקלאס).
 function postsForBreak(day, brk, r) {
+  // מצבת מיוחדת ליום — גוברת על כל השאר.
+  const dayCfg = (r.dayOverrides || {})[day];
+  if (dayCfg && dayCfg.posts != null) return dayCfg.posts;
   const sb = r.specialBreaks;
   if (sb && Array.isArray(sb.days) && Array.isArray(sb.breaks)
       && sb.days.indexOf(day) !== -1 && sb.breaks.indexOf(brk) !== -1) {
@@ -331,8 +334,23 @@ function lastPeriodByDay(model) {
   return out;
 }
 
+// כמה אנשי צוות זמינים בכל יום. ימים דלי-צוות משובצים ראשונים, אחרת
+// המכסות מתמצות בימים הקלים ולא נשאר מי שיאייש את היום הקשה.
+function daysByScarcity(model, r) {
+  const days = ((model.meta && model.meta.days) || []).slice();
+  const teachers = (model && model.teachers) || [];
+  const count = (day) => teachers.filter((t) => {
+    if (t.noDuty || t.type === 'חוגים') return false;
+    if (isDayOff(t, day)) return false;
+    return worksOnDay(t, day);
+  }).length;
+  const score = {};
+  for (const d of days) score[d] = count(d);
+  return days.sort((a, b) => score[a] - score[b]);
+}
+
 function buildSlots(model, r) {
-  const days = (model.meta && model.meta.days) || [];
+  const days = daysByScarcity(model, r);
   const areas = r.areas || [];
   const slots = [];
   const lastPeriod = lastPeriodByDay(model);
@@ -353,24 +371,31 @@ function buildSlots(model, r) {
         continue;
       }
       // הפסקה רגילה — N עמדות תורנות מתחלקות בין האזורים (round-robin), + סייר + מ"מ.
-      const posts = postsForBreak(day, brk, r);
-      const baseposts = areas.length || (r.postsPerRegularBreak || 6);
+      // גיזרות מפורשות ליום מסוים — למשל ביום קצר, שבו יש פחות צוות
+      // ורוצים לבחור אילו גיזרות מאוישות ולא להסתמך על סבב.
+      const dayZones = ((r.dayOverrides || {})[day] || {}).zones;
+      const dayAreas = Array.isArray(dayZones) && dayZones.length ? dayZones : areas;
+      const posts = Array.isArray(dayZones) && dayZones.length
+        ? dayZones.length : postsForBreak(day, brk, r);
+      const baseposts = dayAreas.length || (r.postsPerRegularBreak || 6);
       for (let i = 0; i < posts; i++) {
         // עמדה מעבר למספר המתחמים — עמדת דינמיקלאס (ימי ב׳ ו-ד׳, הפסקות 10 ו-12).
         if (i >= baseposts) {
           slots.push({ day, break: brk, area: DYNAMIC_ZONE, role: 'דינמיקלאס', mgmt: false, dynamic: true, idx: i });
           continue;
         }
-        const area = areas.length ? areas[i % areas.length] : null;
+        const area = dayAreas.length ? dayAreas[i % dayAreas.length] : null;
         slots.push({ day, break: brk, area, role: roleForArea(area), mgmt: false, idx: i });
       }
-      const patrol = r.patrolPerBreak || 0;
+      const dayCfg = (r.dayOverrides || {})[day] || {};
+      const patrol = dayCfg.patrol != null ? dayCfg.patrol : (r.patrolPerBreak || 0);
       for (let i = 0; i < patrol; i++) {
         slots.push({ day, break: brk, area: null, role: 'סייר', mgmt: false, patrol: true, idx: i });
       }
-      const subs = (r.substitutesOverride && r.substitutesOverride[brk] != null)
-        ? r.substitutesOverride[brk]
-        : (r.substitutesPerBreak || 0);
+      const subs = dayCfg.substitutes != null ? dayCfg.substitutes
+        : ((r.substitutesOverride && r.substitutesOverride[brk] != null)
+          ? r.substitutesOverride[brk]
+          : (r.substitutesPerBreak || 0));
       for (let i = 0; i < subs; i++) {
         slots.push({ day, break: brk, area: null, role: 'מ"מ', mgmt: false, substitute: true, idx: i });
       }

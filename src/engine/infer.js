@@ -193,9 +193,16 @@ function buildModel(rawLessons, overrides = {}) {
     // dayOff — הוראה ידנית בלבד. אין להסיק אותו מהיעדר שיעורים:
     // ייתכנו ימים בלי שיעורים שבהם המורה עדיין בבית הספר.
     // תומך גם ב-dayOff יחיד וגם ב-daysOff מרובים.
+    // בהיעדר הגדרה אישית — ימי החופש שברירת המחדל של סוג המורה
+    // (defaultDaysOffByType ב-config/rules.json).
     let daysOff = [];
     if (Array.isArray(ov.daysOff)) daysOff = ov.daysOff.filter(Boolean);
     else if (ov.dayOff !== undefined && ov.dayOff !== null && ov.dayOff !== '') daysOff = [ov.dayOff];
+    else {
+      const byType = (overrides && overrides.defaultDaysOffByType) || {};
+      const def = byType[type];
+      if (Array.isArray(def)) daysOff = def.filter(Boolean);
+    }
     const dayOff = daysOff.length ? daysOff[0] : null;
 
     // alwaysPresent — נוכח בכל יום גם בלי שיעורים. נקבע ידנית בלבד,
