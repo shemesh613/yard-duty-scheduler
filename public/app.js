@@ -33,6 +33,10 @@
   const restartBtn = $('restartBtn');
   const backToSettingsBtn = $('backToSettingsBtn');
 
+  const unfilledCard = $('unfilledCard');
+  const unfilledList = $('unfilledList');
+  const unfilledCount = $('unfilledCount');
+
   const issuesCard = $('issuesCard');
   const issuesList = $('issuesList');
   const issuesCount = $('issuesCount');
@@ -55,6 +59,7 @@
   let lastDownloadId = null;
   let restoring = false;
   let violations = [];
+  let unfilled = [];
   // true בהרצה חדשה, false בעדכון אחרי שינוי ידני — כדי לא לגלול
   // את המשתמש בחזרה לראש הדף בכל החלפה או הסרה.
   let freshRun = true;
@@ -784,6 +789,8 @@
 
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
     violations = Array.isArray(data.violations) ? data.violations : [];
+    unfilled = Array.isArray(data.unfilled) ? data.unfilled : [];
+    renderUnfilled();
     renderIssues();
     if (data.fileId) fileId = data.fileId;
     lastSummary = data.summary || null;
@@ -830,6 +837,73 @@
     el.classList.add('show');
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => el.classList.remove('show'), 1600);
+  }
+
+  // ---------- עמדות שלא אוישו ----------
+  // לכל עמדה ריקה — כל אנשי הצוות הנוכחים באותה שעה, וסיבת הפסילה לכל אחד.
+  // ההנהלה בוחרת מי לשבץ, וההחלטה נשמרת כשיבוץ ידני.
+
+  const BRK = { 'אחרי 2': 'הפסקת 10', 'אחרי 4': 'הפסקת 12', 'אחרי 6': 'הפסקת צהריים' };
+  const DAYF = {
+    'יום א': 'יום ראשון', 'יום ב': 'יום שני', 'יום ג': 'יום שלישי',
+    'יום ד': 'יום רביעי', 'יום ה': 'יום חמישי', 'יום ו': 'יום שישי',
+  };
+
+  function renderUnfilled() {
+    if (!unfilledCard) return;
+    if (!unfilled.length) { hide(unfilledCard); return; }
+
+    unfilledCount.textContent = unfilled.length;
+    unfilledList.innerHTML = unfilled.map((u, i) => {
+      const free = u.candidates.filter((c) => !c.reason).length;
+      const where = (DAYF[u.day] || u.day) + ' · ' + (BRK[u.break] || u.break)
+        + ' · ' + u.role + (u.area ? ' · ' + u.area : '');
+      return `
+        <details class="unf" data-idx="${i}">
+          <summary>
+            <span class="unf-where">${where}</span>
+            <span class="unf-meta">${u.candidates.length} אנשי צוות נוכחים${free ? ' · ' + free + ' פנויים' : ''}</span>
+          </summary>
+          <div class="unf-body">
+            <p class="unf-sum">${u.summary}</p>
+            <table class="unf-table">
+              <thead><tr><th>שם</th><th>תפקיד</th><th>תורנויות</th><th>מדוע לא נבחר</th><th></th></tr></thead>
+              <tbody>${u.candidates.map((c, j) => `
+                <tr class="${c.reason ? '' : 'free'}">
+                  <td class="t-name">${c.name}</td>
+                  <td>${c.type}</td>
+                  <td class="center">${c.duties}</td>
+                  <td>${c.reason || '<span class="ok-txt">פנוי לשיבוץ</span>'}</td>
+                  <td class="center"><button type="button" class="btn-pick"
+                        data-slot="${i}" data-cand="${j}">שבץ</button></td>
+                </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </details>`;
+    }).join('');
+    show(unfilledCard);
+  }
+
+  if (unfilledList) {
+    unfilledList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-pick');
+      if (!btn) return;
+      const u = unfilled[Number(btn.dataset.slot)];
+      const c = u && u.candidates[Number(btn.dataset.cand)];
+      if (!u || !c) return;
+      const NL = String.fromCharCode(10);
+      const where = (DAYF[u.day] || u.day) + ', ' + (BRK[u.break] || u.break)
+        + ', ' + (u.area || u.role);
+      let msg = 'לשבץ את ' + c.name + ' ל' + where + '?';
+      if (c.reason) msg += NL + NL + 'שימו לב: ' + c.reason + '.';
+      if (!confirm(msg)) return;
+      manualPins.push({
+        teacher: c.rawName, day: u.day, break: u.break,
+        area: u.area, role: u.role, manual: true,
+      });
+      saveState();
+      computePlan(true);
+    });
   }
 
   // ---------- נקודות לבדיקה ----------

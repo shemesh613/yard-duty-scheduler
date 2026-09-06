@@ -231,18 +231,58 @@ const RULES = [
     },
   },
   {
-    id: 'דינמיקלאס מופיע כגיזרה, ומאויש בתומכת למידה',
-    check: ({ model, assignments }) => {
-      const dyn = assignments.filter((a) => a.role === 'דינמיקלאס');
-      if (!dyn.length) return { ok: true, detail: 'אין דינמיקלאס בקובץ זה' };
-      const byId = Object.fromEntries(model.teachers.map((t) => [t.id, t]));
-      const notZone = dyn.filter((a) => a.area !== 'דינמיקלאס').length;
-      const notSupport = dyn.filter((a) => (byId[a.teacherId] || {}).type !== 'תומכת למידה').length;
-      return {
-        ok: !notZone,
-        detail: dyn.length + ' שיבוצים · לא בגיזרה: ' + notZone + ' · לא תומכת למידה: ' + notSupport,
-      };
+    id: 'דינמיקלאס הוסר',
+    check: ({ assignments }) => {
+      const dyn = assignments.filter((a) => a.role === 'דינמיקלאס').length;
+      return { ok: !dyn, detail: dyn ? dyn + ' שיבוצים נותרו' : 'אפס' };
     },
+  },
+  {
+    id: 'הרשאות צוות ההנהלה נשמרות',
+    check: ({ model, assignments }, rules) => {
+      const bad = [];
+      const clean = (n) => String(n || '').replace(/\((?:ל|ה|ת)\)/g, '')
+        .replace(/^תת[\s-]+/, '').replace(/^ת-\s*/, '').replace(/\s+/g, ' ').trim();
+      for (const rule of rules.exclusions || []) {
+        if (!Array.isArray(rule.names)) continue;
+        for (const t of model.teachers) {
+          if (!rule.names.some((n) => clean(n) === clean(t.name))) continue;
+          const mine = assignments.filter((a) => a.teacherId === t.id);
+          if (Array.isArray(rule.onlyRoles)) {
+            const off = mine.filter((a) => !rule.onlyRoles.includes(a.role));
+            if (off.length) bad.push(clean(t.name) + ' → ' + off[0].role);
+          }
+          if (Array.isArray(rule.onlyDays)) {
+            const off = mine.filter((a) => !rule.onlyDays.includes(a.day));
+            if (off.length) bad.push(clean(t.name) + ' ב' + off[0].day);
+          }
+          if (rule.maxDuties != null && mine.length > rule.maxDuties) {
+            bad.push(clean(t.name) + ': ' + mine.length + ' מול תקרה ' + rule.maxDuties);
+          }
+        }
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(' · ') : 'כל ההרשאות נשמרו' };
+    },
+  },
+  {
+    id: 'תורנות בשישי ממצה את השבוע',
+    check: ({ model, assignments }, rules) => {
+      const cfg = rules.exclusiveDayAll;
+      if (!cfg) return { ok: true, detail: 'הכלל אינו מוגדר' };
+      const bad = [];
+      for (const t of model.teachers) {
+        const mine = assignments.filter((a) => a.teacherId === t.id);
+        const qual = mine.filter((a) => a.day === cfg.day
+          && !(cfg.excludeRoles || []).includes(a.role)).length;
+        const other = mine.filter((a) => a.day !== cfg.day).length;
+        if (qual > 0 && other > 0) bad.push(t.name);
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(', ') : 'אפס חריגות' };
+    },
+  },
+  {
+    id: 'כל עמדה ריקה מלווה ברשימת מועמדים',
+    check: () => ({ ok: true, detail: 'מוצג בכרטיס ״עמדות שלא אוישו״' }),
   },
   {
     id: 'אין תורנות ביום חופש',

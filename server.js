@@ -146,6 +146,8 @@ app.post('/api/run', upload.single('file'), (req, res) => {
       // רשימת השיבוצים — כדי שהממשק יוכל להציג טבלה ולאפשר הסרה ידנית.
       assignments: (dutyPlan && Array.isArray(dutyPlan.assignments)) ? dutyPlan.assignments : [],
       violations: (dutyPlan && Array.isArray(dutyPlan.violations)) ? dutyPlan.violations : [],
+      // עמדות שלא אוישו, עם רשימת מועמדים וסיבת הפסילה לכל אחד.
+      unfilled: (dutyPlan && Array.isArray(dutyPlan.unfilled)) ? dutyPlan.unfilled : [],
       fileId,
       downloadId: workbookBuffer ? downloadId : null
     });

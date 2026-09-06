@@ -268,6 +268,32 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
 .step:disabled { color: #b6c0cd; cursor: default; }
 .step-sep { color: #c3cbd6; }
 
+.unfilled-card { border-inline-start: 4px solid var(--error); }
+.unfilled-list { display: grid; gap: 8px; }
+.unf {
+  border: 1px solid #f0c9c3; border-radius: 10px; background: #fdf3f1;
+}
+.unf summary {
+  cursor: pointer; padding: 10px 14px; display: flex;
+  justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.unf summary::-webkit-details-marker { display: none; }
+.unf-where { font-weight: 600; color: #a03526; font-size: .95rem; }
+.unf-meta { color: var(--muted); font-size: .84rem; }
+.unf-body { padding: 0 14px 14px; }
+.unf-sum { color: var(--muted); font-size: .87rem; margin: 0 0 10px; }
+.unf-table { width: 100%; border-collapse: collapse; font-size: .9rem; background: #fff; border-radius: 8px; }
+.unf-table th, .unf-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: right; }
+.unf-table thead th { color: var(--muted); font-size: .78rem; font-weight: 600; }
+.unf-table tr.free { background: #f2faf5; }
+.unf-table .ok-txt { color: var(--accent-dark); font-weight: 600; }
+.unf-table .center { text-align: center; }
+.btn-pick {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 3px 14px; font-family: inherit; font-size: .82rem; cursor: pointer;
+}
+.btn-pick:hover { background: var(--accent-dark); }
+
 .issues-card { border-inline-start: 4px solid var(--warn); }
 .issues-count {
   display: inline-block; background: var(--warn-bg); color: var(--warn);

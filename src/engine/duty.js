@@ -410,6 +410,7 @@ function assignDuties(model, rules, options = {}) {
   const locations = (r.useLocations) ? loadLocations() : null;
   const violations = [];
   const warnings = [];
+  const unfilled = [];   // עמדות שלא אוישו, עם רשימת מועמדים לבחירה ידנית
 
   // מתחמי התורנות. כשקיים config/zones.json הם מחליפים את ארבעת האזורים הישנים,
   // ועמדה אחת נפתחת בכל מתחם בכל הפסקה.
@@ -551,7 +552,16 @@ function assignDuties(model, rules, options = {}) {
   // שאר עמדות ההנהלה (תחילת/סוף יום) — למורי הנהלה.
   for (const slot of slots) {
     if (!slot.mgmt || slot._taken) continue;
-    const cands = management.filter(t => {
+    // מועמדים לתחילת/סוף יום: צוות ההנהלה, ובנוסף מי שהותר לו במפורש
+    // תפקיד זה בכללי האיסור (onlyRoles).
+    const allowedByRule = teachers.filter((t) => {
+      if (t.type === r.managementType || t.noDuty || t.type === 'חוגים') return false;
+      return (r.exclusions || []).some((rule) =>
+        rule && Array.isArray(rule.names) && Array.isArray(rule.onlyRoles)
+        && rule.onlyRoles.indexOf(slot.role) !== -1
+        && rule.names.some((n) => sameName(n, t.name)));
+    });
+    const cands = management.concat(allowedByRule).filter(t => {
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
       if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return false;
@@ -559,6 +569,9 @@ function assignDuties(model, rules, options = {}) {
       if (isDayOff(t, slot.day)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
+      if (violatesExclusiveDay(t, slot, r, st)) return false;
+      const pc = personalCap(t, r);
+      if (pc != null && st.total >= pc) return false;
       if (st.total >= st.quota) return false;
       // תחילת/סוף יום הן תורנויות רגילות ואינן חורגות ממכסת הבסיס.
       if ((st.total - (st.sub || 0)) >= baseQuota(t, r)) return false;
@@ -593,6 +606,45 @@ function assignDuties(model, rules, options = {}) {
     if (!cands.length) continue;
     cands.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
     takeSlot(slot, cands[0]);
+  }
+
+  // כל אנשי הצוות שנוכחים בבית הספר באותה שעה, עם סיבת הפסילה לכל אחד.
+  // מוצג בממשק כחלון בחירה, כדי שההנהלה תכריע מי ישובץ.
+  function candidatesFor(slot) {
+    const out = [];
+    for (const t of teachers) {
+      if (t.noDuty || t.type === 'חוגים') continue;
+      if (isDayOff(t, slot.day)) continue;
+      if (!worksOnDay(t, slot.day)) continue;
+
+      let why = null;
+      const st = state.get(t.id);
+      if (st.assignedSlots.has(slot.day + '|' + slot.break)) why = 'כבר משובץ באותה הפסקה';
+      else if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) why = 'כבר יש לו תורנות באותו יום';
+      else if (isExcluded(t, slot, r)) why = 'כלל שיבוץ אוסר עליו תפקיד זה';
+      else if (violatesExclusiveDay(t, slot, r, st)) why = 'תורנות ביום זה ממצה את כל תורנויותיו';
+      else {
+        const pc = personalCap(t, r);
+        if (pc != null && st.total >= pc) why = 'הגיע לתקרה האישית שנקבעה לו (' + pc + ')';
+        else if (!withinWorkSpan(t, slot.day, slot.break, r)) why = 'אינו בבית הספר בשעה זו';
+        else if (!genderOk(t, slot.area, slot.day, slot.break)) why = 'שייך למתחם המגדרי האחר';
+        else if (slot.substitute
+          ? (st.sub || 0) >= (r.extraSubstitution || 0)
+          : (st.total - (st.sub || 0)) >= baseQuota(t, r)) why = 'מילא את מכסתו (' + st.total + ')';
+        else if (!freeAroundBreak(t, slot.day, slot.break)) why = 'מלמד בשיעורים משני צדי ההפסקה';
+      }
+
+      out.push({
+        name: shortName(t.name),
+        rawName: t.name,
+        type: t.type,
+        duties: st.total,
+        reason: why,          // null = פנוי לשיבוץ
+      });
+    }
+    // הפנויים תחילה, אחריהם לפי מיעוט תורנויות.
+    out.sort((a, b) => (a.reason ? 1 : 0) - (b.reason ? 1 : 0) || a.duties - b.duties);
+    return out;
   }
 
   // מסביר מדוע אין מועמד לעמדה: סופר כמה נפסלו ומאיזו סיבה.
@@ -653,6 +705,8 @@ function assignDuties(model, rules, options = {}) {
       if (!genderOk(t, slot.area, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
       if (violatesExclusiveDay(t, slot, r, st)) return false;
+      const pcap2 = personalCap(t, r);
+      if (pcap2 != null && st.total >= pcap2) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
       // מכסת התורנויות הרגילות אינה נפרצת גם בפשרה — היא הוראת ההנהלה.
       // מה שכן מתרפה: ההצמדות לשיעורים סביב ההפסקה, ותקרת המ"מ.
@@ -666,6 +720,14 @@ function assignDuties(model, rules, options = {}) {
       return true;
     });
     if (!relaxed.length) {
+      unfilled.push({
+        day: slot.day,
+        break: slot.break,
+        role: slot.role,
+        area: slot.area || null,
+        summary: whyEmpty(slot) || 'לא נמצא מועמד',
+        candidates: candidatesFor(slot),
+      });
       violations.push('עמדה לא אוישה: ' + slot.role
         + (slot.area ? ' · ' + slot.area : '')
         + ' ב-' + slot.day + ' / ' + slot.break
@@ -685,6 +747,41 @@ function assignDuties(model, rules, options = {}) {
   // ---------- שלב 3: תורנות מ"מ (substitution) — מילוי עמדות שנותרו ----------
   // אם נשארו עמדות לא משובצות ועדיין יש מורים מתחת ל"מכסה+מ"מ" — כבר טופל בשלב 2,
   // כי effectiveQuota כולל את ה-extraSubstitution. אין צורך בשלב נפרד.
+
+  // מדוע מורה לא הגיע למכסתו — הסיבה השכיחה ביותר על פני העמדות שהיה
+  // יכול לאייש. נועד לחסוך חיפוש ידני.
+  function whyUnderQuota(t, st) {
+    const cap = personalCap(t, r);
+    if (cap != null && st.total >= cap) return 'נקבעה לו תקרה אישית של ' + cap + ' תורנויות';
+
+    const exCfg = exclusiveDayOf(t, r);
+    if (exCfg && (st.exQualifying || 0) > 0) {
+      return 'תורנות ב' + exCfg.day + ' ממצה את כל תורנויותיו';
+    }
+
+    const days = ((model.meta && model.meta.days) || []).filter((d) => !isDayOff(t, d) && worksOnDay(t, d));
+    if (!days.length) return 'אינו נוכח באף יום שבו נדרשות תורנויות';
+
+    const tally = {};
+    let openSlots = 0;
+    for (const slot of slots) {
+      if (slot.mgmt && t.type !== r.managementType) continue;
+      if (isDayOff(t, slot.day) || !worksOnDay(t, slot.day)) continue;
+      openSlots++;
+      const st2 = state.get(t.id);
+      let why;
+      if (r.oneDutyPerDay && (st2.perDay[slot.day] || 0) > 0) why = 'כבר שובץ באותם ימים';
+      else if (isExcluded(t, slot, r)) why = 'כללי השיבוץ אוסרים עליו את התפקידים שנותרו';
+      else if (!withinWorkSpan(t, slot.day, slot.break, r)) why = 'ההפסקות שנותרו מחוץ לשעות עבודתו';
+      else if (!genderOk(t, slot.area, slot.day, slot.break)) why = 'הגיזרות שנותרו במתחם המגדרי האחר';
+      else if (!freeAroundBreak(t, slot.day, slot.break)) why = 'מלמד משני צדי ההפסקות שנותרו';
+      else why = 'העמדות שהתאימו לו אוישו קודם';
+      tally[why] = (tally[why] || 0) + 1;
+    }
+    if (!openSlots) return 'לא נמצאו עמדות מתאימות בימים שבהם הוא נוכח';
+    const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    return top ? top[0] : 'לא נמצאה עמדה מתאימה';
+  }
 
   // ---------- ולידציה ----------
   const perTeacher = {};
@@ -737,7 +834,8 @@ function assignDuties(model, rules, options = {}) {
 
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
     if (total < cappedBase && !exclusiveMet) {
-      violations.push('מורה "' + shortName(t.name) + '" (' + t.type + '): שובצו ' + total + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '.');
+      violations.push('מורה "' + shortName(t.name) + '" (' + t.type + '): שובצו ' + total
+        + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '. הסיבה: ' + whyUnderQuota(t, st) + '.');
       quotaOk = false;
     } else {
       quotasMet++;
@@ -843,14 +941,14 @@ function assignDuties(model, rules, options = {}) {
   if (score > 1) score = 1;
   score = Math.round(score * 1000) / 1000;
 
-  return { assignments, perTeacher, violations, score };
+  return { assignments, perTeacher, violations, warnings, unfilled, score };
 }
 
 // יום בלעדי: לסוגי מורים מסוימים, תורנות ביום שנקבע ממצה את כל תורנויותיהם.
 // מי שקיבל תורנות באותו יום לא יקבל אחרת בשבוע, ולהפך.
 // ההגדרה היא שם יום, או { day, excludeRoles } — תפקידים שאינם מזכים בפטור.
 function exclusiveDayOf(teacher, r) {
-  const cfg = (r.exclusiveDayByType || {})[teacher.type];
+  const cfg = (r.exclusiveDayByType || {})[teacher.type] || r.exclusiveDayAll;
   if (!cfg) return null;
   if (typeof cfg === 'string') return { day: cfg, excludeRoles: [] };
   if (!cfg.day) return null;
@@ -901,6 +999,18 @@ function sameName(a, b) {
   return clean(a) === clean(b);
 }
 
+// תקרת תורנויות אישית מ-config/rules.json (maxDuties).
+function personalCap(teacher, r) {
+  let cap = null;
+  for (const rule of (r.exclusions || [])) {
+    if (!rule || rule.maxDuties == null) continue;
+    if (Array.isArray(rule.names) && !rule.names.some((n) => sameName(n, teacher.name))) continue;
+    if (Array.isArray(rule.types) && rule.types.indexOf(teacher.type) === -1) continue;
+    cap = cap == null ? rule.maxDuties : Math.min(cap, rule.maxDuties);
+  }
+  return cap;
+}
+
 function isExcluded(teacher, slot, r) {
   const rules = Array.isArray(r.exclusions) ? r.exclusions : [];
   for (const rule of rules) {
@@ -911,11 +1021,17 @@ function isExcluded(teacher, slot, r) {
     if (Array.isArray(rule.breaks) && rule.breaks.indexOf(slot.break) === -1) continue;
     if (Array.isArray(rule.zones) && rule.zones.indexOf(slot.area) === -1) continue;
     if (Array.isArray(rule.names) && !rule.names.some((n) => sameName(n, teacher.name))) continue;
-    // onlyRoles — היתר בלעדי: כל תפקיד אחר אסור.
+    // onlyRoles / onlyDays — היתר בלעדי: כל מה שאינו ברשימה נחסם.
+    let exclusive = false;
     if (Array.isArray(rule.onlyRoles)) {
+      exclusive = true;
       if (rule.onlyRoles.indexOf(slot.role) === -1) return true;
-      continue;
     }
+    if (Array.isArray(rule.onlyDays)) {
+      exclusive = true;
+      if (rule.onlyDays.indexOf(slot.day) === -1) return true;
+    }
+    if (exclusive) continue;
     return true;
   }
   return false;
@@ -946,6 +1062,8 @@ function eligibleForDuty(slot, teachers, state, r) {
     if (!genderOk(t, slot.area, slot.day, slot.break)) continue;  // מגדר
     if (isExcluded(t, slot, r)) continue;           // איסור שיבוץ מפורש
     if (violatesExclusiveDay(t, slot, r, st)) continue;  // יום בלעדי
+    const pcap = personalCap(t, r);
+    if (pcap != null && st.total >= pcap) continue;  // תקרה אישית
     if (!freeAroundBreak(t, slot.day, slot.break)) continue; // לא מלמד בשני הצדדים
     out.push(t);
   }
