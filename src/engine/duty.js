@@ -785,6 +785,24 @@ function assignDuties(model, rules, options = {}) {
 
   // ---------- ולידציה ----------
   const perTeacher = {};
+
+  // תמונת מצב מלאה לכל איש צוות — הבסיס לדוח הבדיקה השמי בממשק.
+  const ptEntry = (t, st, quotaOk, base, under) => ({
+    name: t.name,
+    short: shortName(t.name),
+    type: t.type,
+    noDuty: !!t.noDuty,
+    daysOff: Array.isArray(t.daysOff) ? t.daysOff : (t.dayOff ? [t.dayOff] : []),
+    yard: st.yard,
+    building: st.building,
+    patrol: st.patrol || 0,
+    sub: st.sub || 0,
+    mgmt: st.mgmt || 0,
+    total: st.total,
+    base: (base != null ? base : null),
+    under: !!under,
+    quotaOk,
+  });
   let quotasMet = 0;
   let quotasExpected = 0;
 
@@ -801,13 +819,13 @@ function assignDuties(model, rules, options = {}) {
         violations.push('מורה "' + shortName(t.name) + '" מסומן ללא תורנות (noDuty) אך שובצו לו ' + total + ' תורנויות.');
         quotaOk = false;
       }
-      perTeacher[t.id] = { yard: st.yard, building: st.building, total, quotaOk };
+      perTeacher[t.id] = ptEntry(t, st, quotaOk, 0, false);
       continue; // לא נספר במכסות
     }
 
     if (t.type === 'חוגים') {
       // מורי חוגים — אין מכסה; דלג על ספירה.
-      perTeacher[t.id] = { yard: st.yard, building: st.building, total, quotaOk: true };
+      perTeacher[t.id] = ptEntry(t, st, true, 0, false);
       continue;
     }
 
@@ -833,7 +851,8 @@ function assignDuties(model, rules, options = {}) {
       a.teacherId === t.id && a.day === exCfg.day && countsForExclusive(a.role, exCfg));
 
     // תורנויות חובה נספרות לזכות המורה במילוי המכסה, אך אינן נחשבות חריגה.
-    if (total < cappedBase && !exclusiveMet) {
+    const underQuota = (total < cappedBase && !exclusiveMet);
+    if (underQuota) {
       violations.push('מורה "' + shortName(t.name) + '" (' + t.type + '): שובצו ' + total
         + ' תורנויות מתוך מכסת בסיס ' + cappedBase + '. הסיבה: ' + whyUnderQuota(t, st) + '.');
       quotaOk = false;
@@ -907,7 +926,7 @@ function assignDuties(model, rules, options = {}) {
       }
     }
 
-    perTeacher[t.id] = { yard: st.yard, building: st.building, total, quotaOk };
+    perTeacher[t.id] = ptEntry(t, st, quotaOk, cappedBase, underQuota);
   }
 
   // ולידציה: עמדות הנהלה לא מאוישות (אם יש הנהלה אך לא הספיקה)

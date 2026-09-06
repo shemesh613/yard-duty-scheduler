@@ -517,3 +517,37 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   .site-header h1 { font-size: 1.5rem; }
   .card { padding: 20px; }
 }
+
+/* ---------- בדיקה שמית ---------- */
+.check-out { margin-top: 14px; }
+.check-stats { margin-bottom: 14px; }
+.check-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.check-table th, .check-table td {
+  padding: 7px 9px; border-bottom: 1px solid var(--border);
+  text-align: right; vertical-align: top;
+}
+.check-table thead th {
+  position: sticky; top: 0; background: var(--card, #fff);
+  color: var(--muted); font-size: .78rem; font-weight: 600; z-index: 1;
+}
+.check-table .center { text-align: center; font-variant-numeric: tabular-nums; }
+.check-table .strong { font-weight: 700; }
+.check-table .t-name { font-weight: 600; white-space: nowrap; }
+.chk-tag {
+  display: inline-block; font-size: .7rem; font-weight: 600;
+  padding: 1px 6px; border-radius: 999px; background: #eef2f7; color: var(--muted);
+}
+.chk-tag.warn { background: #fef3c7; color: #92400e; }
+.chk-off { font-size: .72rem; color: var(--muted); font-weight: 400; }
+.chk-none { color: var(--muted); font-size: .82rem; }
+.check-table th { white-space: nowrap; }
+.check-table tr.chk-main > td { border-bottom: 0; padding-bottom: 2px; }
+.check-table tr.chk-det > td { padding-top: 0; padding-bottom: 9px; }
+.check-table tr.chk-main:hover, .check-table tr.chk-main:hover + tr.chk-det {
+  background: rgba(0, 0, 0, .03);
+}
+.chk-chip {
+  display: inline-block; margin: 2px 3px 0 0; padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: 999px;
+  font-size: .76rem; color: var(--muted); background: #f8fafc; white-space: nowrap;
+}

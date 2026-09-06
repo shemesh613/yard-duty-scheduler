@@ -42,6 +42,10 @@
   const issuesCount = $('issuesCount');
   const issuesToggle = $('issuesToggle');
 
+  const runCheckBtn = $('runCheckBtn');
+  const printCheckBtn = $('printCheckBtn');
+  const checkOut = $('checkOut');
+
   const dutiesTable = $('dutiesTable');
   const redistributeBtn = $('redistributeBtn');
   const removedNote = $('removedNote');
@@ -49,6 +53,7 @@
   let selectedFile = null;
   let inspectData = null;
   let assignments = [];        // השיבוצים מההרצה האחרונה
+  let staff = [];              // מצבת אנשי הצוות מההרצה האחרונה (לדוח הבדיקה)
   let removed = [];            // תורנויות שהוסרו ידנית: {teacher, day, break}
   let extraTeachers = [];      // מורים שנוספו ידנית ואינם בקובץ
   let removedTeachers = [];    // מורים שהוסרו ידנית
@@ -360,6 +365,7 @@
       overrides: inspectData ? collectOverrides() : null,
       removed, manualPins, extraTeachers, removedTeachers,
       assignments,
+      staff,
       summary: lastSummary,
       downloadId: lastDownloadId,
     };
@@ -400,6 +406,7 @@
       extraTeachers = st.extraTeachers || [];
       removedTeachers = st.removedTeachers || [];
       assignments = st.assignments || [];
+      staff = st.staff || [];
       lastSummary = st.summary || null;
       lastDownloadId = st.downloadId || null;
 
@@ -408,7 +415,7 @@
 
       if (assignments.length) {
         renderResults({
-          summary: lastSummary, assignments, downloadId: lastDownloadId,
+          summary: lastSummary, assignments, staff, downloadId: lastDownloadId,
         });
       } else if (inspectData) {
         hide(uploadSection);
@@ -788,6 +795,7 @@
     });
 
     assignments = Array.isArray(data.assignments) ? data.assignments : [];
+    if (Array.isArray(data.staff)) staff = data.staff;
     violations = Array.isArray(data.violations) ? data.violations : [];
     unfilled = Array.isArray(data.unfilled) ? data.unfilled : [];
     renderUnfilled();
@@ -797,6 +805,8 @@
     lastDownloadId = data.downloadId || null;
     renderDuties();
     renderBoard();
+    // אם הבדיקה כבר פתוחה — לרענן אותה מיד, שלא תציג נתונים ישנים.
+    if (checkOut && !checkOut.hidden) renderCheck();
     saveState();
 
     if (data.downloadId) {
@@ -959,6 +969,152 @@
   };
   const brkName = (b) => BREAK_FULL[b] || b;
   const dayName = (d) => DAY_FULL[d] || d;
+
+  // ---------- בדיקה שמית ----------
+  // רשימה לפי א'-ב': לכל איש צוות כמה תורנויות רגילות וכמה מ"מ, מתי בדיוק,
+  // ומה המכסה שנקבעה לו. מיועדת לבדיקה סופית אחרי השינויים הידניים.
+
+  function slotLabel(a) {
+    const d = DAYF[a.day] || a.day;
+    if (a.break === 'תחילת יום' || a.break === 'סוף יום') return d + ' · ' + a.break;
+    return d + ' · ' + (BRK[a.break] || a.break) + ' · ' + a.role
+      + (a.area ? ' (' + a.area + ')' : '');
+  }
+
+  function sortDuties(list) {
+    return list.slice().sort((x, y) => {
+      const dx = DAY_ORDER.indexOf(x.day), dy = DAY_ORDER.indexOf(y.day);
+      if (dx !== dy) return dx - dy;
+      return String(x.break).localeCompare(String(y.break), 'he');
+    });
+  }
+
+  // בונה את שורות הדוח ממה שמוצג על המסך ברגע זה — כולל שינויים ידניים.
+  function checkRows() {
+    const byName = {};
+    for (const a of assignments) (byName[a.teacherName] = byName[a.teacherName] || []).push(a);
+
+    const known = staff.length
+      ? staff.slice()
+      : Object.keys(byName).map((n) => ({ name: n, short: n, type: '—' }));
+
+    // מי ששובץ אך אינו במצבת (למשל מורה שנוסף ידנית) — מצורף בסוף.
+    for (const n of Object.keys(byName)) {
+      if (!known.some((t) => t.name === n)) known.push({ name: n, short: n, type: '—' });
+    }
+
+    return known.map((t) => {
+      const mine = sortDuties(byName[t.name] || []);
+      const count = (fn) => mine.filter(fn).length;
+      return {
+        name: t.short || t.name,
+        type: t.type || '—',
+        regular: count((a) => a.role === 'חצר' || a.role === 'מבנה'),
+        patrol: count((a) => a.role === 'סייר'),
+        sub: count((a) => a.role === 'מ"מ'),
+        edges: count((a) => a.role === 'תחילת יום' || a.role === 'סוף יום'),
+        total: mine.length,
+        base: (t.base != null ? t.base : null),
+        under: !!t.under,
+        noDuty: !!t.noDuty,
+        daysOff: Array.isArray(t.daysOff) ? t.daysOff : [],
+        duties: mine.map(slotLabel),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }
+
+  function checkHtml(rows) {
+    const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
+    const under = rows.filter((r) => r.under);
+    const none = rows.filter((r) => !r.noDuty && r.total === 0);
+
+    const stat = (num, label, warn) =>
+      '<div class="stat' + (warn && num ? ' stat-warn' : '') + '">'
+      + '<div class="stat-num">' + num + '</div>'
+      + '<div class="stat-label">' + label + '</div></div>';
+
+    const head = '<div class="stats check-stats">'
+      + stat(rows.filter((r) => r.total > 0).length, 'אנשי צוות בתורנות')
+      + stat(sum('total'), 'סה"כ תורנויות')
+      + stat(sum('regular'), 'תורנויות רגילות')
+      + stat(sum('patrol'), 'סיירת')
+      + stat(sum('sub'), 'מילוי מקום')
+      + stat(sum('edges'), 'תחילת/סוף יום')
+      + stat(under.length, 'מתחת למכסה', true)
+      + stat(none.length, 'ללא תורנות כלל', true)
+      + '</div>';
+
+    // שתי שורות לכל איש צוות: הספירות, ומתחתן פירוט התורנויות עצמן.
+    const body = rows.map((r, i) => {
+      const flag = r.noDuty ? ' <span class="chk-tag">פטור</span>'
+        : (r.under ? ' <span class="chk-tag warn">מתחת למכסה</span>' : '');
+      const off = r.daysOff.length ? '<div class="chk-off">חופשי: ' + r.daysOff.join(', ') + '</div>' : '';
+      const det = r.duties.length
+        ? r.duties.map((d) => '<span class="chk-chip">' + d + '</span>').join('')
+        : '<span class="chk-none">אין תורנויות</span>';
+      return '<tr class="chk-main">'
+        + '<td class="center">' + (i + 1) + '</td>'
+        + '<td class="t-name">' + r.name + flag + off + '</td>'
+        + '<td>' + r.type + '</td>'
+        + '<td class="center">' + r.regular + '</td>'
+        + '<td class="center">' + r.patrol + '</td>'
+        + '<td class="center">' + r.sub + '</td>'
+        + '<td class="center">' + r.edges + '</td>'
+        + '<td class="center strong">' + r.total + '</td>'
+        + '<td class="center">' + (r.base != null ? r.base : '—') + '</td>'
+        + '</tr>'
+        + '<tr class="chk-det"><td></td><td colspan="8">' + det + '</td></tr>';
+    }).join('');
+
+    return head
+      + '<div class="table-wrap"><table class="check-table">'
+      + '<thead><tr><th>#</th><th>שם</th><th>תפקיד</th><th>רגילות</th><th>סיירת</th>'
+      + '<th>מ"מ</th><th>תחילת/סוף יום</th><th>סה"כ</th><th>מכסה</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderCheck() {
+    if (!checkOut) return;
+    const rows = checkRows();
+    checkOut.innerHTML = checkHtml(rows);
+    show(checkOut);
+    if (printCheckBtn) printCheckBtn.hidden = false;
+    if (runCheckBtn) runCheckBtn.textContent = 'רענן בדיקה';
+  }
+
+  if (runCheckBtn) {
+    runCheckBtn.addEventListener('click', () => {
+      if (!assignments.length) return;
+      renderCheck();
+      checkOut.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  if (printCheckBtn) {
+    printCheckBtn.addEventListener('click', () => {
+      const rows = checkRows();
+      const w = window.open('', '_blank');
+      if (!w) return;
+      const css = 'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;margin:24px;color:#111}'
+        + 'h1{font-size:20px;margin:0 0 4px}p.sub{color:#666;font-size:13px;margin:0 0 16px}'
+        + 'table{border-collapse:collapse;width:100%;font-size:12px}'
+        + 'th,td{border:1px solid #bbb;padding:4px 6px;vertical-align:top}'
+        + 'th{background:#eee}.center{text-align:center}.strong{font-weight:700}'
+        + '.chk-chip{display:inline-block;border:1px solid #ddd;border-radius:10px;'
+        + 'padding:1px 6px;margin:1px 2px;font-size:11px;background:#fafafa}'
+        + '.chk-det td{border-top:0;padding-top:0}.chk-main td{border-bottom:0}'
+        + '.stats{display:none}.chk-tag{font-size:11px;color:#b45309}'
+        + '.chk-off{font-size:11px;color:#666}.chk-none{color:#999}'
+        + 'tr{break-inside:avoid}';
+      const when = new Date().toLocaleString('he-IL');
+      w.document.write('<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">'
+        + '<title>בדיקה שמית — תורנויות</title><style>' + css + '</style></head><body>'
+        + '<h1>בדיקה שמית — תורנויות לפי איש צוות</h1>'
+        + '<p class="sub">הופק ב-' + when + '</p>'
+        + checkHtml(rows) + '</body></html>');
+      w.document.close();
+    });
+  }
 
   function renderBoard() {
     if (!bigBoard) return;

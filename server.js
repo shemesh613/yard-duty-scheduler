@@ -148,6 +148,8 @@ app.post('/api/run', upload.single('file'), (req, res) => {
       violations: (dutyPlan && Array.isArray(dutyPlan.violations)) ? dutyPlan.violations : [],
       // עמדות שלא אוישו, עם רשימת מועמדים וסיבת הפסילה לכל אחד.
       unfilled: (dutyPlan && Array.isArray(dutyPlan.unfilled)) ? dutyPlan.unfilled : [],
+      // מצבת אנשי הצוות — שם, סוג, מכסה וספירות. הבסיס לדוח הבדיקה השמי.
+      staff: (dutyPlan && dutyPlan.perTeacher) ? Object.values(dutyPlan.perTeacher) : [],
       fileId,
       downloadId: workbookBuffer ? downloadId : null
     });
