@@ -355,7 +355,12 @@ function buildSlots(model, r) {
   const slots = [];
   const lastPeriod = lastPeriodByDay(model);
   for (const day of days) {
+    const dayCfg0 = (r.dayOverrides || {})[day] || {};
     for (const brk of r.breaks) {
+      // הפסקה שאינה מתקיימת ביום מסוים — למשל יום שלישי, שאינו יום ארוך
+      // ואין בו הפסקת צהריים. זו עובדה על לוח הזמנים של בית הספר ואי אפשר
+      // להסיק אותה מהקובץ: גם ביום קצר יש כיתות בודדות שממשיכות ללמוד.
+      if (Array.isArray(dayCfg0.breaksOff) && dayCfg0.breaksOff.indexOf(brk) !== -1) continue;
       // הפסקה שאחרי שיעור שאינו מתקיים באותו יום — אינה קיימת.
       const periods = breakToPeriods(brk);
       if (periods && lastPeriod[day] != null && periods[0] >= lastPeriod[day]) continue;
@@ -388,7 +393,11 @@ function buildSlots(model, r) {
         slots.push({ day, break: brk, area, role: roleForArea(area), mgmt: false, idx: i });
       }
       const dayCfg = (r.dayOverrides || {})[day] || {};
-      const patrol = dayCfg.patrol != null ? dayCfg.patrol : (r.patrolPerBreak || 0);
+      // מספר הסיירים — לפי הפסקה מסוימת, אחרת לפי היום, אחרת ברירת המחדל.
+      // כך אפשר לבטל סיירת בהפסקה אחת בלי לגעת בשאר היום.
+      const patrol = (dayCfg.patrolByBreak && dayCfg.patrolByBreak[brk] != null)
+        ? dayCfg.patrolByBreak[brk]
+        : (dayCfg.patrol != null ? dayCfg.patrol : (r.patrolPerBreak || 0));
       for (let i = 0; i < patrol; i++) {
         slots.push({ day, break: brk, area: null, role: 'סייר', mgmt: false, patrol: true, idx: i });
       }

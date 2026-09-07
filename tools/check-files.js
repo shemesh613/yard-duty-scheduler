@@ -34,13 +34,21 @@ function findFiles(targets) {
 const CHECKS = [
   {
     name: 'כל העמדות הנדרשות אוישו',
-    run: ({ assignments }) => {
+    run: ({ assignments }, rules) => {
       const bad = [];
       const byDay = {};
       for (const a of assignments) (byDay[a.day] = byDay[a.day] || new Set()).add(a.break);
+      // כמה סיירים נדרשים באותה הפסקה — יש ימים והפסקות שבהם אפס במכוון.
+      const patrolNeeded = (day, brk) => {
+        const cfg = (rules.dayOverrides || {})[day] || {};
+        if (cfg.patrolByBreak && cfg.patrolByBreak[brk] != null) return cfg.patrolByBreak[brk];
+        if (cfg.patrol != null) return cfg.patrol;
+        return rules.patrolPerBreak != null ? rules.patrolPerBreak : 0;
+      };
       for (const [day, breaks] of Object.entries(byDay)) {
         for (const brk of breaks) {
           if (!/אחרי/.test(brk)) continue;
+          if (!patrolNeeded(day, brk)) continue;
           const has = (role) => assignments.some((a) => a.day === day && a.break === brk && a.role === role);
           if (!has('סייר')) bad.push(`אין סייר ב-${day} ${brk}`);
         }

@@ -207,19 +207,32 @@ const RULES = [
   },
   {
     id: 'כל עמדות הסיירת מאוישות',
-    check: ({ assignments }) => {
+    check: ({ assignments }, rules) => {
       const byDay = {};
       for (const a of assignments) (byDay[a.day] = byDay[a.day] || new Set()).add(a.break);
+      // יש הפסקות שבהן אין סיירת במכוון (יום שישי) — אלה אינן חוסר.
+      const needed = (day, brk) => {
+        const cfg = ((rules && rules.dayOverrides) || {})[day] || {};
+        if (cfg.patrolByBreak && cfg.patrolByBreak[brk] != null) return cfg.patrolByBreak[brk];
+        if (cfg.patrol != null) return cfg.patrol;
+        return (rules && rules.patrolPerBreak != null) ? rules.patrolPerBreak : 0;
+      };
       const missing = [];
+      let off = 0;
       for (const [day, breaks] of Object.entries(byDay)) {
         for (const brk of breaks) {
           if (!/אחרי/.test(brk)) continue;
+          if (!needed(day, brk)) { off++; continue; }
           if (!assignments.some((a) => a.day === day && a.break === brk && a.role === 'סייר')) {
             missing.push(day + ' ' + brk);
           }
         }
       }
-      return { ok: !missing.length, detail: missing.length ? missing.join(', ') : 'כולן' };
+      return {
+        ok: !missing.length,
+        detail: missing.length ? missing.join(', ')
+          : 'כולן' + (off ? ' (' + off + ' הפסקות ללא סיירת במכוון)' : ''),
+      };
     },
   },
   {
@@ -278,6 +291,30 @@ const RULES = [
         if (qual > 0 && other > 0) bad.push(t.name);
       }
       return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(', ') : 'אפס חריגות' };
+    },
+  },
+  {
+    // יום שלישי אינו יום ארוך. אי אפשר להסיק זאת מהקובץ — גם ביום קצר
+    // יש כיתות בודדות שממשיכות ללמוד, והמערכת יצרה שם הפסקת צהריים.
+    id: 'ביום שלישי אין הפסקת צהריים',
+    check: ({ assignments }, rules) => {
+      const off = ((rules.dayOverrides || {})['יום ג'] || {}).breaksOff || [];
+      if (!off.length) return { ok: true, detail: 'הכלל אינו מוגדר' };
+      const bad = assignments.filter((a) => a.day === 'יום ג' && off.includes(a.break));
+      return {
+        ok: !bad.length,
+        detail: bad.length ? bad.length + ' תורנויות ב-' + off.join('/') : 'אפס תורנויות',
+      };
+    },
+  },
+  {
+    id: 'אין סיירת ביום שישי',
+    check: ({ assignments }) => {
+      const bad = assignments.filter((a) => a.day === 'יום ו' && a.role === 'סייר');
+      return {
+        ok: !bad.length,
+        detail: bad.length ? bad.map((a) => a.teacherName).join(', ') : 'אפס',
+      };
     },
   },
   {
