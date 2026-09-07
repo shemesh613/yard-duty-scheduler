@@ -60,6 +60,10 @@
   let allTeacherNames = [];    // לרשימת הבחירה בהחלפת תורן
   let manualPins = [];         // שיבוצים שנקבעו ידנית ויש לשמרם
   let fileId = null;           // מזהה הקובץ שהועלה, לחישוב מחדש בלי העלאה
+  // עותק של הקובץ עצמו, נשמר יחד עם העבודה. הדיסק של השרת החינמי נמחק
+  // בכל עלייה מחדש, ואז המזהה כבר לא קיים — בלי העותק הזה כל שינוי ידני
+  // היה נכשל ב"לא התקבל קובץ", והעבודה של הסגנית הייתה אבודה.
+  let fileData = null;         // base64 של הקובץ
   let lastSummary = null;
   let lastDownloadId = null;
   let restoring = false;
@@ -80,6 +84,61 @@
   const show = (el) => { el.hidden = false; };
   const hide = (el) => { el.hidden = true; };
 
+  function b64ToBlob(b64) {
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+  }
+
+  function rememberFileBytes(file) {
+    return new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const res = String(fr.result || '');
+        const comma = res.indexOf(',');
+        fileData = comma === -1 ? null : res.slice(comma + 1);
+        resolve(fileData);
+      };
+      fr.onerror = () => { fileData = null; resolve(null); };
+      try { fr.readAsDataURL(file); } catch (_) { fileData = null; resolve(null); }
+    });
+  }
+
+  // עבודה שנשמרה לפני שהתחלנו לשמור גם את הקובץ עצמו: המזהה בשרת כבר
+  // לא קיים, ואין לנו עותק. מבקשים לבחור שוב את אותו קובץ — השינויים
+  // הידניים נשמרים, ומכאן והלאה הקובץ נשמר יחד עם העבודה.
+  function askForFileAgain() {
+    return new Promise((resolve) => {
+      let inp = document.getElementById('recoverFile');
+      if (!inp) {
+        inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.xlsx,.xls';
+        inp.id = 'recoverFile';
+        inp.hidden = true;
+        document.body.appendChild(inp);
+      }
+      inp.value = '';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) { resolve(false); return; }
+        selectedFile = f;
+        await rememberFileBytes(f);
+        if (fileNameEl) fileNameEl.textContent = f.name;
+        resolve(true);
+      };
+      alert('קובץ המערכת אינו זמין יותר בשרת (הוא נמחק בעדכון גרסה).'
+        + String.fromCharCode(10) + String.fromCharCode(10)
+        + 'בחרו שוב את אותו קובץ אקסל — כל השינויים הידניים שלכם יישמרו,'
+        + String.fromCharCode(10)
+        + 'ומעכשיו הקובץ נשמר יחד עם העבודה ולא יאבד שוב.');
+      inp.click();
+    });
+  }
+
   function setFile(file) {
     if (!file) return;
     const name = (file.name || '').toLowerCase();
@@ -88,6 +147,7 @@
       return;
     }
     selectedFile = file;
+    rememberFileBytes(file);
     fileNameEl.textContent = file.name;
     show(fileChosen);
     inspectBtn.disabled = false;
@@ -96,6 +156,7 @@
 
   function resetFile() {
     selectedFile = null;
+    fileData = null;
     inspectData = null;
     fileInput.value = '';
     hide(fileChosen);
@@ -360,6 +421,7 @@
   function currentState() {
     return {
       fileId,
+      fileData,
       fileName: fileNameEl ? fileNameEl.textContent : '',
       inspectData,
       overrides: inspectData ? collectOverrides() : null,
@@ -402,6 +464,7 @@
     restoring = true;
     try {
       fileId = st.fileId || null;
+      fileData = st.fileData || null;
       inspectData = st.inspectData || null;
       removed = st.removed || [];
       manualPins = st.manualPins || [];
@@ -473,7 +536,7 @@
     try { local = JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); } catch (_) { /* אין */ }
     if (local && (!st || (local.savedAt || '') > (st.savedAt || ''))) st = local;
 
-    if (!st || !st.fileId) return;
+    if (!st || (!st.fileId && !st.fileData)) return;
 
     const when = st.savedAt ? new Date(st.savedAt).toLocaleString('he-IL') : '';
     const manual = (st.removed || []).length + (st.manualPins || []).length;
@@ -492,8 +555,10 @@
     bar.querySelector('#restoreYes').addEventListener('click', async () => {
       applyState(st);
       bar.remove();
-      // הקובץ עצמו נשמר בשרת ועלול להימחק בהפעלה מחדש. אם אינו קיים,
-      // הלוח מוצג אך חישוב מחדש ידרוש העלאה חוזרת.
+      // עבודה שנשמרה מכאן והלאה נושאת את הקובץ עצמו — אין מה לבדוק.
+      if (st.fileData) return;
+      // עבודה ישנה מסתמכת על מזהה בשרת, והדיסק של השרת החינמי נמחק בכל
+      // עלייה מחדש. בודקים מראש, כדי שלא תגלה זאת רק כשתנסה לשנות משהו.
       try {
         const fd = new FormData();
         fd.append('fileId', st.fileId);
@@ -504,8 +569,9 @@
       } catch (_) {
         const note = document.createElement('div');
         note.className = 'restore-bar warn';
-        note.textContent = 'הלוח שוחזר, אך קובץ השעות אינו זמין עוד בשרת. '
-          + 'לשינויים ולחישוב מחדש — העלו את הקובץ שוב.';
+        note.textContent = 'הלוח שוחזר במלואו, אך קובץ השעות עצמו אינו שמור בשרת יותר. '
+          + 'בפעולה הראשונה שתעשו נבקש לבחור אותו שוב — השינויים הידניים יישמרו, '
+          + 'ומאז הקובץ יישמר יחד עם העבודה ולא יאבד שוב.';
         const main = document.querySelector('main.container');
         main.insertBefore(note, main.firstChild);
       }
@@ -641,14 +707,33 @@
           })));
       }
 
-      const fd = new FormData();
-      if (selectedFile) fd.append('file', selectedFile);
-      else if (fileId) fd.append('fileId', fileId);
-      fd.append('overrides', JSON.stringify(overrides));
-      const resp = await fetch('/api/run', { method: 'POST', body: fd });
+      const send = (useBytes) => {
+        const fd = new FormData();
+        if (selectedFile && !useBytes) fd.append('file', selectedFile);
+        else if (useBytes && fileData) {
+          fd.append('file', b64ToBlob(fileData),
+            (fileNameEl && fileNameEl.textContent) || 'workbook.xlsx');
+        } else if (selectedFile) fd.append('file', selectedFile);
+        else if (fileId) fd.append('fileId', fileId);
+        fd.append('overrides', JSON.stringify(overrides));
+        return fetch('/api/run', { method: 'POST', body: fd });
+      };
+
+      let resp = await send(false);
       let data;
       try { data = await resp.json(); }
       catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
+      // הדיסק של השרת החינמי נמחק בכל עלייה מחדש, והמזהה של הקובץ שהועלה
+      // כבר לא קיים. שולחים שוב את העותק ששמור אצלנו, בלי להטריד את המשתמש.
+      if (!data.ok && /לא התקבל קובץ/.test(String(data.error || ''))) {
+        // אין עותק? מבקשים מהמשתמש לבחור שוב את אותו קובץ.
+        const ready = fileData ? true : await askForFileAgain();
+        if (ready) {
+          resp = await send(!selectedFile);
+          try { data = await resp.json(); }
+          catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
+        }
+      }
       hide(loading);
       if (!data.ok) {
         showError(data.error || 'אירעה שגיאה בעיבוד הקובץ.', data.detail || '');

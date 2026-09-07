@@ -10,6 +10,9 @@
     "check:rules": "node tools/check-rules.js",
     "check:swap": "node tools/check-swap.js",
     "check:edits": "node tools/check-edits.js",
+    "state:save": "node tools/state-backup.js save",
+    "state:restore": "node tools/state-backup.js restore",
+    "state:show": "node tools/state-backup.js show",
     "check:all": "node tools/check-files.js && node tools/check-rules.js && node tools/check-swap.js && node tools/check-edits.js"
   },
   "engines": {
