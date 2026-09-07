@@ -1259,6 +1259,24 @@
     });
   }
 
+  // אזהרה לפני הפצה: בלוח למורים עמדה שלא אוישה נראית כתא ריק, ואי אפשר
+  // להבחין בינה לבין הפסקה שאינה מתקיימת. עדיף לעצור מאשר להפיץ לוח חסר.
+  function exportGuard(e) {
+    if (!unfilled.length) return;
+    const NL = String.fromCharCode(10);
+    const list = unfilled.slice(0, 6)
+      .map((u) => '· ' + dayName(u.day) + ', ' + brkName(u.break)
+        + ', ' + (u.area || u.role)).join(NL);
+    const more = unfilled.length > 6 ? NL + '· ועוד ' + (unfilled.length - 6) : '';
+    if (!confirm('יש ' + unfilled.length + ' עמדות שלא אוישו:' + NL + NL
+      + list + more + NL + NL
+      + 'בלוח למורים הן ייראו כתא ריק. להמשיך בכל זאת?')) {
+      e.preventDefault();
+    }
+  }
+  if (teachersBtn) teachersBtn.addEventListener('click', exportGuard);
+  if (downloadBtn) downloadBtn.addEventListener('click', exportGuard);
+
   // קיצור מראש מסך התוצאות אל הרשימה השמית.
   const toCheckBtn = $('toCheckBtn');
   if (toCheckBtn) {
