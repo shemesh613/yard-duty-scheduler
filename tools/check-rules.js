@@ -282,7 +282,41 @@ const RULES = [
   },
   {
     id: 'כל עמדה ריקה מלווה ברשימת מועמדים',
-    check: () => ({ ok: true, detail: 'מוצג בכרטיס ״עמדות שלא אוישו״' }),
+    check: ({ unfilled }) => {
+      const bad = (unfilled || []).filter((u) => !u.candidates || !u.candidates.length);
+      return {
+        ok: !bad.length,
+        detail: bad.length ? bad.map((u) => u.day + ' ' + u.break).join(', ')
+          : (unfilled || []).length + ' עמדות ריקות, כולן עם רשימת מועמדים',
+      };
+    },
+  },
+  {
+    // עמדות תחילת/סוף יום נבלעו פעם באזהרה מרוכזת ולא הופיעו בכרטיס
+    // העמדות הריקות — כך נעלמה עמדת סוף היום של יום א' מעיני ההנהלה.
+    id: 'עמדת תחילת/סוף יום ריקה מדווחת ככל עמדה אחרת',
+    check: ({ assignments, unfilled }, rules) => {
+      const days = [...new Set(assignments.map((a) => a.day))];
+      const need = { 'תחילת יום': 2, 'סוף יום': 1 };
+      const over = (rules && rules.stationsOverride) || {};
+      const bad = [];
+      let empty = 0;
+      for (const day of days) {
+        for (const brk of Object.keys(need)) {
+          const want = over[brk] != null ? over[brk] : need[brk];
+          const got = assignments.filter((a) => a.day === day && a.break === brk).length;
+          const missing = want - got;
+          if (missing <= 0) continue;
+          empty += missing;
+          const shown = (unfilled || []).filter((u) => u.day === day && u.break === brk).length;
+          if (shown < missing) bad.push(day + ' ' + brk + ' — ' + missing + ' חסרות, ' + shown + ' מדווחות');
+        }
+      }
+      return {
+        ok: !bad.length,
+        detail: bad.length ? bad.join(' · ') : (empty ? empty + ' עמדות חסרות, כולן מדווחות' : 'כולן מאוישות'),
+      };
+    },
   },
   {
     id: 'אין תורנות ביום חופש',
@@ -384,8 +418,10 @@ console.log();
 
 let failed = 0;
 for (const rule of RULES) {
-  const a = rule.check({ model: direct.model, assignments: direct.dutyPlan.assignments }, rules);
-  const b = rule.check({ model: viaUi.model, assignments: viaUi.dutyPlan.assignments }, rules);
+  const a = rule.check({ model: direct.model, assignments: direct.dutyPlan.assignments,
+    unfilled: direct.dutyPlan.unfilled || [] }, rules);
+  const b = rule.check({ model: viaUi.model, assignments: viaUi.dutyPlan.assignments,
+    unfilled: viaUi.dutyPlan.unfilled || [] }, rules);
   const ok = a.ok && b.ok;
   if (!ok) failed++;
   console.log((ok ? '✓ ' : '✗ ') + rule.id);

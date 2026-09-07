@@ -366,6 +366,8 @@
       removed, manualPins, extraTeachers, removedTeachers,
       assignments,
       staff,
+      violations,
+      unfilled,
       summary: lastSummary,
       downloadId: lastDownloadId,
     };
@@ -407,6 +409,8 @@
       removedTeachers = st.removedTeachers || [];
       assignments = st.assignments || [];
       staff = st.staff || [];
+      violations = st.violations || [];
+      unfilled = st.unfilled || [];
       lastSummary = st.summary || null;
       lastDownloadId = st.downloadId || null;
 
@@ -415,7 +419,8 @@
 
       if (assignments.length) {
         renderResults({
-          summary: lastSummary, assignments, staff, downloadId: lastDownloadId,
+          summary: lastSummary, assignments, staff, violations, unfilled,
+          downloadId: lastDownloadId,
         });
       } else if (inspectData) {
         hide(uploadSection);
@@ -805,8 +810,8 @@
     lastDownloadId = data.downloadId || null;
     renderDuties();
     renderBoard();
-    // אם הבדיקה כבר פתוחה — לרענן אותה מיד, שלא תציג נתונים ישנים.
-    if (checkOut && !checkOut.hidden) renderCheck();
+    // הבדיקה השמית מוצגת תמיד ומתעדכנת בכל שינוי — בלי צורך ללחוץ עליה.
+    renderCheck();
     saveState();
 
     if (data.downloadId) {
@@ -866,8 +871,10 @@
     unfilledCount.textContent = unfilled.length;
     unfilledList.innerHTML = unfilled.map((u, i) => {
       const free = u.candidates.filter((c) => !c.reason).length;
+      // בתחילת/סוף יום שם ההפסקה והתפקיד זהים — אין טעם לכתוב אותם פעמיים.
+      const edge = (u.break === u.role);
       const where = (DAYF[u.day] || u.day) + ' · ' + (BRK[u.break] || u.break)
-        + ' · ' + u.role + (u.area ? ' · ' + u.area : '');
+        + (edge ? '' : ' · ' + u.role) + (u.area ? ' · ' + u.area : '');
       return `
         <details class="unf" data-idx="${i}">
           <summary>
@@ -1087,6 +1094,16 @@
       if (!assignments.length) return;
       renderCheck();
       checkOut.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // קיצור מראש מסך התוצאות אל הרשימה השמית.
+  const toCheckBtn = $('toCheckBtn');
+  if (toCheckBtn) {
+    toCheckBtn.addEventListener('click', () => {
+      if (!assignments.length) return;
+      if (checkOut && checkOut.hidden) renderCheck();
+      document.querySelector('.check-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 

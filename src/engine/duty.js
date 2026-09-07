@@ -550,10 +550,10 @@ function assignDuties(model, rules, options = {}) {
   }
 
   // שאר עמדות ההנהלה (תחילת/סוף יום) — למורי הנהלה.
-  for (const slot of slots) {
-    if (!slot.mgmt || slot._taken) continue;
-    // מועמדים לתחילת/סוף יום: צוות ההנהלה, ובנוסף מי שהותר לו במפורש
-    // תפקיד זה בכללי האיסור (onlyRoles).
+  // מועמדים: צוות ההנהלה, ובנוסף מי שהותר לו במפורש תפקיד זה (onlyRoles).
+  // staticOnly — רק הבדיקות שאינן תלויות במה שכבר שובץ (הרשאות, ימי עבודה).
+  // מגבלות המכסה והיום נבדקות בחיפוש עצמו, שם הן משתנות תוך כדי.
+  const mgmtCandidates = (slot, staticOnly) => {
     const allowedByRule = teachers.filter((t) => {
       if (t.type === r.managementType || t.noDuty || t.type === 'חוגים') return false;
       return (r.exclusions || []).some((rule) =>
@@ -561,15 +561,16 @@ function assignDuties(model, rules, options = {}) {
         && rule.onlyRoles.indexOf(slot.role) !== -1
         && rule.names.some((n) => sameName(n, t.name)));
     });
-    const cands = management.concat(allowedByRule).filter(t => {
+    return management.concat(allowedByRule).filter(t => {
       const st = state.get(t.id);
-      if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
-      if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return false;
       if (!worksOnDay(t, slot.day)) return false;
       if (isDayOff(t, slot.day)) return false;
       if (isBlocked(t, slot.day, slot.break)) return false;
       if (isExcluded(t, slot, r)) return false;
       if (violatesExclusiveDay(t, slot, r, st)) return false;
+      if (staticOnly) return true;
+      if (st.assignedSlots.has(slot.day + '|' + slot.break)) return false;
+      if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return false;
       const pc = personalCap(t, r);
       if (pc != null && st.total >= pc) return false;
       if (st.total >= st.quota) return false;
@@ -577,9 +578,92 @@ function assignDuties(model, rules, options = {}) {
       if ((st.total - (st.sub || 0)) >= baseQuota(t, r)) return false;
       return true;
     });
-    if (!cands.length) continue;
-    cands.sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
-    takeSlot(slot, cands[0]);
+  };
+
+  // מילוי חמדני "מי שפנוי עכשיו" השאיר עמדות ריקות גם כשקיים שיבוץ מלא:
+  // מי שמותר לו גם תחילת יום וגם סוף יום ניצל את מכסתו על תחילת היום,
+  // ואז לא נשאר איש לסוף היום (כך נותר יום א' סוף יום ריק).
+  // לכן כאן מחפשים שיבוץ מרבי בשיטת מסלול מרחיב: כשעמדה אינה מוצאת איש
+  // פנוי, מנסים להזיז מישהו שכבר שובץ לעמדה אחרת שמתאימה לו, וכך לפנות מקום.
+  const mgmtSlots = slots.filter(s => s.mgmt && !s._taken);
+  const slotKey = (s) => s.day + '|' + s.break + '|' + s.idx;
+
+  // תקרת התורנויות של איש צוות לצורך עמדות תחילת/סוף יום.
+  const mgmtCapOf = (t) => {
+    const st = state.get(t.id);
+    const pc = personalCap(t, r);
+    let cap = Math.min(st.quota, baseQuota(t, r) + (st.sub || 0));
+    if (pc != null) cap = Math.min(cap, pc);
+    return cap;
+  };
+
+  const placed = new Map();   // teacherId -> [slot]
+  const owner = new Map();    // slotKey  -> teacher
+  const mine = (t) => placed.get(t.id) || [];
+  const capLeft = (t) => mgmtCapOf(t) - (state.get(t.id).total + mine(t).length);
+  const dayBusy = (t, slot) => {
+    const st = state.get(t.id);
+    if (st.assignedSlots.has(slot.day + '|' + slot.break)) return true;
+    if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) return true;
+    return mine(t).some((s) => (r.oneDutyPerDay ? s.day === slot.day
+      : (s.day === slot.day && s.break === slot.break)));
+  };
+  const put = (slot, t) => {
+    placed.set(t.id, mine(t).concat([slot]));
+    owner.set(slotKey(slot), t);
+  };
+  const drop = (slot) => {
+    const t = owner.get(slotKey(slot));
+    if (!t) return;
+    placed.set(t.id, mine(t).filter((s) => slotKey(s) !== slotKey(slot)));
+    owner.delete(slotKey(slot));
+  };
+
+  // המועמדים לעמדה, ללא בדיקות המכסה והיום — אלה נבדקות בנפרד בחיפוש.
+  const staticCands = (slot) => mgmtCandidates(slot, true)
+    .slice().sort((a, b) => scoreCandidate(a, b, slot, state, r, locations));
+
+  // banned — אנשי צוות שאסור להשתמש בהם בענף הנוכחי של החיפוש. בלעדיו
+  // עמדה שהוזזה הייתה חוזרת לאותו איש צוות עצמו, והוא היה חורג ממכסתו.
+  function fillMgmt(slot, visited, banned) {
+    const key = slotKey(slot);
+    if (visited.has(key)) return false;
+    visited.add(key);
+    const cands = staticCands(slot).filter((t) => !banned.has(t.id));
+    // קודם — מי שפנוי כרגע. בין הפנויים מעדיפים את מי שנותרו לו הכי מעט
+    // תורנויות אפשריות: מי שתקרתו נמוכה (למשל תורנות בוקר אחת בלבד) יישאר
+    // אחרת בלי תורנות כלל, בעוד האחרים יכולים למלא גם עמדות אחרות.
+    const free = cands.filter((t) => capLeft(t) > 0 && !dayBusy(t, slot));
+    free.sort((a, b) => capLeft(a) - capLeft(b));
+    if (free.length) { put(slot, free[0]); return true; }
+    // אחר כך — להזיז מישהו שכבר שובץ, אם נמצאת לו עמדה חלופית.
+    for (const t of cands) {
+      const clash = mine(t).filter((s) => s.day === slot.day);
+      const movable = clash.length ? clash : (capLeft(t) <= 0 ? mine(t) : []);
+      for (const s2 of movable) {
+        drop(s2);
+        const deeper = new Set(banned);
+        deeper.add(t.id);
+        if (fillMgmt(s2, visited, deeper)) {
+          if (capLeft(t) > 0 && !dayBusy(t, slot)) { put(slot, t); return true; }
+          continue;   // s2 מצא בית אחר, אך t עדיין אינו פנוי — ממשיכים
+        }
+        put(s2, t);
+      }
+    }
+    return false;
+  }
+
+  // סדר הפתיחה: העמדות עם מאגר המועמדים הקטן ביותר תחילה.
+  const orderedMgmt = mgmtSlots.slice()
+    .sort((a, b) => staticCands(a).length - staticCands(b).length);
+  for (const slot of orderedMgmt) {
+    if (owner.has(slotKey(slot))) continue;
+    fillMgmt(slot, new Set(), new Set());
+  }
+  for (const slot of mgmtSlots) {
+    const t = owner.get(slotKey(slot));
+    if (t) takeSlot(slot, t);
   }
 
   // ---------- שלב 2: עמדות חצר/מבנה ----------
@@ -608,6 +692,21 @@ function assignDuties(model, rules, options = {}) {
     takeSlot(slot, cands[0]);
   }
 
+  // עמדת תחילת/סוף יום שמורה לצוות ההנהלה, ולמי שהותר לו תפקיד זה במפורש.
+  function allowedOnMgmtSlot(t, slot) {
+    if (t.type === r.managementType) return true;
+    return (r.exclusions || []).some((rule) =>
+      rule && Array.isArray(rule.names) && Array.isArray(rule.onlyRoles)
+      && rule.onlyRoles.indexOf(slot.role) !== -1
+      && rule.names.some((n) => sameName(n, t.name)));
+  }
+
+  // סיבות "רכות" — אפשר לשבץ למרות זאת, זו החלטת ההנהלה.
+  // סיבות "קשות" — שיבוץ יפר כלל מפורש. הרכות מוצגות לפני הקשות.
+  const SOFT = ['מילא את מכסתו', 'הגיע לתקרה האישית', 'כבר יש לו תורנות באותו יום',
+    'מלמד בשיעורים משני צדי ההפסקה'];
+  const isSoft = (why) => SOFT.some((k) => String(why || '').indexOf(k) === 0);
+
   // כל אנשי הצוות שנוכחים בבית הספר באותה שעה, עם סיבת הפסילה לכל אחד.
   // מוצג בממשק כחלון בחירה, כדי שההנהלה תכריע מי ישובץ.
   function candidatesFor(slot) {
@@ -620,6 +719,7 @@ function assignDuties(model, rules, options = {}) {
       let why = null;
       const st = state.get(t.id);
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) why = 'כבר משובץ באותה הפסקה';
+      else if (slot.mgmt && !allowedOnMgmtSlot(t, slot)) why = 'עמדת ' + slot.role + ' שמורה לצוות ההנהלה';
       else if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) why = 'כבר יש לו תורנות באותו יום';
       else if (isExcluded(t, slot, r)) why = 'כלל שיבוץ אוסר עליו תפקיד זה';
       else if (violatesExclusiveDay(t, slot, r, st)) why = 'תורנות ביום זה ממצה את כל תורנויותיו';
@@ -640,10 +740,12 @@ function assignDuties(model, rules, options = {}) {
         type: t.type,
         duties: st.total,
         reason: why,          // null = פנוי לשיבוץ
+        soft: !!why && isSoft(why),
       });
     }
-    // הפנויים תחילה, אחריהם לפי מיעוט תורנויות.
-    out.sort((a, b) => (a.reason ? 1 : 0) - (b.reason ? 1 : 0) || a.duties - b.duties);
+    // קודם הפנויים, אחריהם מי שרק חרג ממכסתו, ולבסוף מי שכלל מפורש חוסם.
+    const rank = (c) => (!c.reason ? 0 : (c.soft ? 1 : 2));
+    out.sort((a, b) => rank(a) - rank(b) || a.duties - b.duties);
     return out;
   }
 
@@ -667,6 +769,7 @@ function assignDuties(model, rules, options = {}) {
       if (t.noDuty) { reasons['פטורים מתורנות']++; continue; }
       if (t.type === 'חוגים') { reasons['פטורים מתורנות']++; continue; }
       if (t.type === r.managementType && !slot.patrol && !slot.mgmt) { reasons['איסור שיבוץ מפורש']++; continue; }
+      if (slot.mgmt && !allowedOnMgmtSlot(t, slot)) { reasons['איסור שיבוץ מפורש']++; continue; }
       if (isDayOff(t, slot.day)) { reasons['יום חופש']++; continue; }
       if (!worksOnDay(t, slot.day)) { reasons['אינם עובדים ביום זה']++; continue; }
       if (st.assignedSlots.has(slot.day + '|' + slot.break)) { reasons['כבר משובצים באותה הפסקה']++; continue; }
@@ -929,10 +1032,22 @@ function assignDuties(model, rules, options = {}) {
     perTeacher[t.id] = ptEntry(t, st, quotaOk, cappedBase, underQuota);
   }
 
-  // ולידציה: עמדות הנהלה לא מאוישות (אם יש הנהלה אך לא הספיקה)
+  // עמדות תחילת/סוף יום שלא אוישו — מדווחות בדיוק כמו כל עמדה אחרת:
+  // שורה בכרטיס "עמדות שלא אוישו", עם רשימת המועמדים וסיבת הפסילה לכל אחד,
+  // כדי שההנהלה תוכל לשבץ מתוכה. קודם הן נבלעו באזהרה מרוכזת ולא נראו כלל.
   const unfilledMgmt = slots.filter(s => s.mgmt && !s._taken);
-  if (unfilledMgmt.length && hasManagement) {
-    warnings.push('נותרו ' + unfilledMgmt.length + ' עמדות הנהלה (תחילת/סוף יום) ללא שיבוץ.');
+  for (const slot of unfilledMgmt) {
+    unfilled.push({
+      day: slot.day,
+      break: slot.break,
+      role: slot.role,
+      area: slot.area || null,
+      summary: whyEmpty(slot) || 'לא נמצא מועמד',
+      candidates: candidatesFor(slot),
+    });
+    violations.push('עמדה לא אוישה: ' + slot.role
+      + ' ב-' + slot.day + ' / ' + slot.break
+      + '. הסיבות: ' + (whyEmpty(slot) || 'לא נמצא מועמד') + '.');
   }
 
   // ולידציה: יאיר שובץ לתחילת יום בכל יום פעיל מלבד dayOff
