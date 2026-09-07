@@ -520,8 +520,12 @@ function assignDuties(model, rules, options = {}) {
     if (!t) continue;
     const st = state.get(t.id);
     if (st.assignedSlots.has(p.day + '|' + p.break)) continue;
-    const slot = slots.find(s => !s._taken && s.day === p.day && s.break === p.break
-      && (p.area ? s.area === p.area : s.area == null) && s.role === p.role);
+    // שתי עמדות באותה הפסקה עם אותו תפקיד ובלי גיזרה (שתי עמדות מ"מ)
+    // נבדלות רק במספר הסידורי, ולכן נעיצה יכולה לציין אותו במפורש.
+    const fits = (s) => !s._taken && s.day === p.day && s.break === p.break
+      && (p.area ? s.area === p.area : s.area == null) && s.role === p.role;
+    const slot = (p.idx != null && slots.find((s) => fits(s) && s.idx === p.idx))
+      || slots.find(fits);
     if (!slot) continue;
     takeSlot(slot, t);
   }
@@ -828,6 +832,7 @@ function assignDuties(model, rules, options = {}) {
         break: slot.break,
         role: slot.role,
         area: slot.area || null,
+        idx: slot.idx,
         summary: whyEmpty(slot) || 'לא נמצא מועמד',
         candidates: candidatesFor(slot),
       });
@@ -896,6 +901,8 @@ function assignDuties(model, rules, options = {}) {
     type: t.type,
     noDuty: !!t.noDuty,
     daysOff: Array.isArray(t.daysOff) ? t.daysOff : (t.dayOff ? [t.dayOff] : []),
+    daysWorked: Array.isArray(t.daysWorked) ? t.daysWorked : [],
+    alwaysPresent: !!t.alwaysPresent,
     yard: st.yard,
     building: st.building,
     patrol: st.patrol || 0,
@@ -1042,6 +1049,7 @@ function assignDuties(model, rules, options = {}) {
       break: slot.break,
       role: slot.role,
       area: slot.area || null,
+      idx: slot.idx,
       summary: whyEmpty(slot) || 'לא נמצא מועמד',
       candidates: candidatesFor(slot),
     });

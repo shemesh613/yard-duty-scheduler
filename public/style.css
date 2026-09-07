@@ -569,3 +569,12 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   font: inherit; font-size: .9rem; min-width: 240px;
 }
 .filter-count { color: var(--muted); font-size: .8rem; }
+
+/* עמדה שלא אוישה — בטבלה ובלוח */
+.row-unfilled { background: #fff7ed; }
+.no-one { color: #b45309; font-weight: 600; }
+.chip-empty {
+  background: #fff7ed; border: 1px dashed #f59e0b; color: #b45309;
+  font-weight: 600; cursor: default;
+}
+.chip-empty.drop-target { background: #fde68a; border-style: solid; }

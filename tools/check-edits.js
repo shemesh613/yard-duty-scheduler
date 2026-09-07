@@ -20,7 +20,8 @@ function makeUi(assignments) {
     pins: [],
     sameSlot(p, x) {
       return p.day === x.day && p.break === x.break
-        && (p.area || null) === (x.area || null) && p.role === x.role;
+        && (p.area || null) === (x.area || null) && p.role === x.role
+        && (p.idx == null || x.idx == null || p.idx === x.idx);
     },
     pin(slot, teacher) {
       this.pins = this.pins.filter((p) => !this.sameSlot(p, slot)
@@ -29,7 +30,8 @@ function makeUi(assignments) {
         && b.day === slot.day && b.break === slot.break));
       this.pins.push({
         teacher, day: slot.day, break: slot.break,
-        area: slot.area || null, role: slot.role, manual: true,
+        area: slot.area || null, role: slot.role,
+        idx: (slot.idx != null ? slot.idx : undefined), manual: true,
       });
     },
     remove(a) {
@@ -57,6 +59,34 @@ const at = (list, s) => list.filter((z) => z.day === s.day && z.break === s.brea
   && z.area === s.area && z.role === s.role).map((z) => z.teacherName);
 
 const CASES = [
+  {
+    // שתי עמדות מ"מ באותה הפסקה נראות זהות. בלי מספר סידורי, שיבוץ
+    // לעמדה השנייה מחק את השיבוץ לראשונה מרשימת השינויים הידניים.
+    name: 'שתי עמדות זהות באותה הפסקה — שני השיבוצים נשמרים',
+    run: () => {
+      const first = runPipeline(buf, {});
+      const gaps = (first.dutyPlan.unfilled || [])
+        .filter((u) => !u.area)
+        .filter((u, i, arr) => arr.filter((v) => v.day === u.day
+          && v.break === u.break && v.role === u.role).length > 1);
+      if (gaps.length < 2) return { ok: true, detail: 'אין בקובץ שתי עמדות זהות ריקות' };
+      const ui = makeUi(first.dutyPlan.assignments.slice());
+      // כל מועמד שההנהלה יכולה לבחור מהחלון, גם אם יש לצדו סיבת פסילה.
+      const pick = (u) => (u.candidates || []).map((c) => c.rawName);
+      const a = pick(gaps[0])[0];
+      const b = pick(gaps[1]).find((n) => n !== a);
+      if (!a || !b) return { ok: true, detail: 'אין שני מועמדים בקובץ' };
+      ui.pin(gaps[0], a);
+      ui.pin(gaps[1], b);
+      const out = ui.run();
+      const there = out.filter((z) => z.day === gaps[0].day && z.break === gaps[0].break
+        && z.role === gaps[0].role).map((z) => z.teacherName);
+      return {
+        ok: ui.pins.length === 2 && there.includes(a) && there.includes(b),
+        detail: ui.pins.length + ' נעיצות נשמרו · בעמדות: ' + there.join(', '),
+      };
+    },
+  },
   {
     name: 'החלפה אחת תופסת',
     run: () => {

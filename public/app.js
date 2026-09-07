@@ -687,9 +687,20 @@
     computePlan(false);
   });
 
-  // חלוקה מחדש של כל הלוח — ההסרות הידניות נשמרות.
+  // חלוקה מחדש של כל הלוח — ההסרות הידניות נשמרות, השיבוצים הידניים לא.
+  // בלי האזהרה הזו לחיצה אחת מוחקת בשקט את כל מי ששובץ ידנית.
   if (redistributeBtn) {
-    redistributeBtn.addEventListener('click', () => computePlan(false));
+    redistributeBtn.addEventListener('click', () => {
+      if (manualPins.length) {
+        const NL = String.fromCharCode(10);
+        if (!confirm('לחלק מחדש את כל הלוח?' + NL + NL
+          + 'יש ' + manualPins.length + ' שיבוצים ידניים — הם יימחקו.' + NL
+          + 'ההסרות (' + removed.length + ') יישמרו.')) return;
+        manualPins = [];
+        saveState();
+      }
+      computePlan(false);
+    });
   }
 
   // ---- שינויים ידניים: ההחלטה האחרונה גוברת ----
@@ -697,7 +708,10 @@
   // וההחלפה החדשה "לא נתפסת". וכן — הסרה נשארה לנצח בלי דרך לבטלה.
 
   const sameSlotAs = (p, x) => p.day === x.day && p.break === x.break
-    && (p.area || null) === (x.area || null) && p.role === x.role;
+    && (p.area || null) === (x.area || null) && p.role === x.role
+    // שתי עמדות מ"מ באותה הפסקה נראות זהות; המספר הסידורי מבדיל ביניהן,
+    // ובלעדיו שיבוץ לעמדה השנייה היה מוחק את השיבוץ לראשונה.
+    && (p.idx == null || x.idx == null || p.idx === x.idx);
 
   function pinTeacher(slot, teacher) {
     manualPins = manualPins.filter((p) => !sameSlotAs(p, slot)
@@ -707,7 +721,8 @@
       && b.day === slot.day && b.break === slot.break));
     manualPins.push({
       teacher, day: slot.day, break: slot.break,
-      area: slot.area || null, role: slot.role, manual: true,
+      area: slot.area || null, role: slot.role,
+      idx: (slot.idx != null ? slot.idx : undefined), manual: true,
     });
   }
 
@@ -734,24 +749,32 @@
     tb.innerHTML = '';
     // הטבלה ממוינת לפי יום ← הפסקה ← תפקיד, אחרת שיבוץ ידני קופץ לראשה
     // וקשה למצוא בה עמדה מסוימת.
-    const view = assignments.map((a, i) => ({ a, i })).sort((x, y) =>
+    // העמדות הריקות מוצגות בטבלה עצמה. בלעדיהן עמדה שלא אוישה פשוט
+    // נעלמה מהרשימה, ולא היה איפה לחפש אותה.
+    const view = assignments.map((a, i) => ({ a, i }))
+      .concat(unfilled.map((u, k) => ({ a: u, i: -1, unf: k })))
+      .sort((x, y) =>
       orderIn(DAY_ORDER, x.a.day) - orderIn(DAY_ORDER, y.a.day)
       || orderIn(BREAK_ORDER, x.a.break) - orderIn(BREAK_ORDER, y.a.break)
       || orderIn(ROLE_ORDER, x.a.role) - orderIn(ROLE_ORDER, y.a.role)
       || String(x.a.area || '').localeCompare(String(y.a.area || ''), 'he'));
-    view.forEach(({ a, i }) => {
+    view.forEach(({ a, i, unf }) => {
       const tr = document.createElement('tr');
+      const isEmpty = (unf != null);
+      if (isEmpty) tr.className = 'row-unfilled';
       tr.innerHTML = `
         <td>${dayName(a.day)}</td>
         <td>${brkName(a.break)}</td>
         <td>${a.role}</td>
         <td>${a.area || '—'}</td>
-        <td class="t-name">${a.teacherName}</td>
-        <td class="center">
-          <button type="button" class="btn-swap" data-idx="${i}"
+        <td class="t-name">${isEmpty ? '<span class="no-one">לא אויש</span>' : a.teacherName}</td>
+        <td class="center">${isEmpty
+          ? `<button type="button" class="btn-swap" data-unf="${unf}"
+                  title="בחר תורן לעמדה">שבץ</button>`
+          : `<button type="button" class="btn-swap" data-idx="${i}"
                   title="החלף לתורן אחר">החלף</button>
-          <button type="button" class="btn-remove" data-idx="${i}"
-                  title="הסר ומצא מחליף אוטומטית">הסר</button>
+             <button type="button" class="btn-remove" data-idx="${i}"
+                  title="הסר ומצא מחליף אוטומטית">הסר</button>`}
         </td>`;
       tb.appendChild(tr);
     });
@@ -787,11 +810,15 @@
   if (removedNote) {
     removedNote.addEventListener('click', (e) => {
       if (e.target.id === 'undoAllBtn') {
-        if (!confirm('לבטל את כל השינויים הידניים ולחזור ללוח שהמערכת חישבה?')) return;
+        const NL = String.fromCharCode(10);
+        if (!confirm('לבטל את כל השינויים הידניים?' + NL + NL
+          + 'הלוח ייבנה מחדש מאפס, בלי ההסרות וההחלפות שעשיתם.')) return;
         removed = [];
         manualPins = [];
         saveState();
-        computePlan(true);
+        // חישוב מלא, בלי נעיצות — אחרת הלוח הנוכחי נשמר כמות שהוא
+        // ורק האילוצים נמחקים, וזה לא "חזרה ללוח שהמערכת חישבה".
+        computePlan(false);
         return;
       }
       const btn = e.target.closest('.mc-undo');
@@ -844,27 +871,52 @@
     }
 
     const swapBtn = e.target.closest('.btn-swap');
-    if (swapBtn) openSwap(Number(swapBtn.dataset.idx));
+    if (swapBtn) {
+      const tr = swapBtn.closest('tr');
+      const u = swapBtn.dataset.unf != null ? unfilled[Number(swapBtn.dataset.unf)] : null;
+      openSwap(tr, u || assignments[Number(swapBtn.dataset.idx)]);
+    }
   });
 
   // --- החלפה ידנית של תורן ---
 
-  // מי פנוי לאותה עמדה: כל מי שאינו משובץ כבר באותו יום ואותה הפסקה.
+  // מי פנוי לאותה עמדה, ומי שלא — ולמה. קודם הרשימה הייתה 102 שמות בלי
+  // שום סימון, ואפשר היה לשבץ מורה שאינה בבית הספר באותו יום.
   function availableFor(a) {
+    const byName = {};
+    for (const t of staff) byName[t.name] = t;
     const busy = new Set(assignments
       .filter((x) => x.day === a.day && x.break === a.break)
       .map((x) => x.teacherName));
-    return allTeacherNames.filter((n) => !busy.has(n)).sort((x, y) => x.localeCompare(y, 'he'));
+    const sameDay = new Set(assignments
+      .filter((x) => x.day === a.day).map((x) => x.teacherName));
+
+    return allTeacherNames
+      .filter((n) => !busy.has(n))
+      .map((n) => {
+        const t = byName[n] || {};
+        let why = null;
+        if (t.noDuty) why = 'פטור מתורנות';
+        else if ((t.daysOff || []).indexOf(a.day) !== -1) why = 'יום חופש שלו';
+        else if (!t.alwaysPresent && (t.daysWorked || []).length
+          && (t.daysWorked || []).indexOf(a.day) === -1) why = 'אינו עובד ביום זה';
+        else if (sameDay.has(n)) why = 'כבר יש לו תורנות באותו יום';
+        else if (t.base != null && t.total >= t.base) why = 'מילא את מכסתו (' + t.total + ')';
+        return { name: n, why };
+      })
+      .sort((x, y) => (x.why ? 1 : 0) - (y.why ? 1 : 0)
+        || x.name.localeCompare(y.name, 'he'));
   }
 
-  function openSwap(idx) {
-    const a = assignments[idx];
-    if (!a) return;
-    const row = dutiesTable.querySelector('tbody tr .btn-swap[data-idx="' + idx + '"]');
-    const tr = row && row.closest('tr');
-    if (!tr || tr.querySelector('.swap-box')) return;
+  // a — שיבוץ קיים (החלפה) או עמדה ריקה (שיבוץ ראשון אליה).
+  function openSwap(tr, a) {
+    if (!tr || !a || tr.querySelector('.swap-box')) return;
 
-    const options = availableFor(a);
+    // לעמדה ריקה יש רשימת מועמדים מהמנוע, עם סיבת פסילה מדויקת לכל אחד
+    // (כולל הרשאות תפקיד). לשורה מאוישת נבנית הרשימה כאן, מהנתונים שבדפדפן.
+    const options = Array.isArray(a.candidates)
+      ? a.candidates.map((c) => ({ name: c.rawName, label: c.name, why: c.reason }))
+      : availableFor(a).map((o) => ({ name: o.name, label: o.name, why: o.why }));
     if (!options.length) {
       alert('אין מורה פנוי אחר להפסקה הזו.');
       return;
@@ -874,21 +926,27 @@
     const box = document.createElement('div');
     box.className = 'swap-box';
     box.innerHTML = `
-      <select class="swap-pick">${options.map((n) => `<option>${n}</option>`).join('')}</select>
+      <select class="swap-pick">${options.map((o) =>
+        `<option value="${o.name}">${o.label}${o.why ? ' — ' + o.why : ''}</option>`).join('')}</select>
       <button type="button" class="btn-swap-ok">אישור</button>
       <button type="button" class="btn-swap-cancel">ביטול</button>`;
     cell.appendChild(box);
 
     box.querySelector('.btn-swap-cancel').addEventListener('click', () => box.remove());
     box.querySelector('.btn-swap-ok').addEventListener('click', () => {
-      const to = box.querySelector('.swap-pick').value;
-      const where = a.day + ', ' + a.break + ', ' + (a.area || a.role);
-      if (!confirm('להחליף ב' + where + '?' + String.fromCharCode(10)
-        + 'במקום: ' + a.teacherName + String.fromCharCode(10)
-        + 'לשבץ: ' + to)) return;
+      const sel = box.querySelector('.swap-pick');
+      const to = sel.value;
+      const why = (options.find((o) => o.name === to) || {}).why;
+      const NL = String.fromCharCode(10);
+      const where = dayName(a.day) + ', ' + brkName(a.break) + ', ' + (a.area || a.role);
+      let msg = a.teacherName
+        ? 'להחליף ב' + where + '?' + NL + 'במקום: ' + a.teacherName + NL + 'לשבץ: ' + to
+        : 'לשבץ את ' + to + ' ל' + where + '?';
+      if (why) msg += NL + NL + 'שימו לב: ' + why + '.';
+      if (!confirm(msg)) return;
 
       // המורה היוצא נחסם מהעמדה, והנכנס ננעץ אליה. שאר הלוח נשמר.
-      removeTeacher(a);
+      if (a.teacherName) removeTeacher(a);
       pinTeacher(a, to);
       saveState();
       computePlan(true);
@@ -1265,17 +1323,27 @@
     const dayHasBreak = (day, brk) => !!(breaksOfDay[day] && breaksOfDay[day].has(brk));
 
     // brk = ההפסקה שהשורה שייכת לה, או null לשורות שאינן תלויות בהפסקה.
-    const rowFor = (label, cls, match, brk) => {
+    // עמדה ריקה מוצגת כשבבה נפרדת, גם כשחלק מהעמדות באותו תא כן אוישו.
+    // היא גם יעד גרירה: גוררים אליה תורן והוא עובר לשם.
+    const emptyChip = (u) =>
+      `<span class="chip chip-empty" data-day="${u.day}" data-break="${u.break}"`
+      + ` data-role="${u.role}" data-area="${u.area || ''}" data-idx2="${u.idx != null ? u.idx : ''}"`
+      + ` title="עמדה שלא אוישה — אפשר לגרור לכאן תורן">לא אויש</span>`;
+
+    const rowFor = (label, cls, match, brk, role) => {
       const tr = document.createElement('tr');
       if (cls) tr.className = cls;
       tr.innerHTML = `<th class="rh">${label}</th>` + days.map((day) => {
         const items = assignments
           .map((a, i) => ({ a, i }))
           .filter(({ a }) => a.day === day && match(a));
-        if (items.length) {
+        const gaps = role
+          ? unfilled.filter((u) => u.day === day && u.break === brk && u.role === role)
+          : [];
+        if (items.length || gaps.length) {
           return '<td>' + items.map(({ a, i }) =>
             `<span class="chip" draggable="true" data-idx="${i}" title="${a.role}${a.area ? ' · ' + a.area : ''}">${a.teacherName}</span>`
-          ).join('') + '</td>';
+          ).join('') + gaps.map(emptyChip).join('') + '</td>';
         }
         // אין שיבוץ. להבחין בין הפסקה שאינה מתקיימת ביום זה לבין עמדה שלא אוישה.
         if (brk && !dayHasBreak(day, brk)) {
@@ -1286,12 +1354,12 @@
       tb.appendChild(tr);
     };
 
-    rowFor('תחילת יום', 'mgmt', (a) => a.break === 'תחילת יום', 'תחילת יום');
+    rowFor('תחילת יום', 'mgmt', (a) => a.break === 'תחילת יום', 'תחילת יום', 'תחילת יום');
 
     for (const brk of regular) {
       const label = brkName(brk);
-      rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר', brk);
-      rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה', brk);
+      rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר', brk, 'חצר');
+      rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה', brk, 'מבנה');
       const dynDays = [...new Set(assignments
         .filter((a) => a.break === brk && a.role === 'דינמיקלאס').map((a) => a.day))];
       if (dynDays.length) {
@@ -1309,11 +1377,11 @@
         }).join('');
         tb.appendChild(tr);
       }
-      rowFor('מ"מ', 'sub', (a) => a.break === brk && a.role === 'מ"מ', brk);
-      rowFor('סיירת', 'sub patrol', (a) => a.break === brk && a.role === 'סייר', brk);
+      rowFor('מ"מ', 'sub', (a) => a.break === brk && a.role === 'מ"מ', brk, 'מ"מ');
+      rowFor('סיירת', 'sub patrol', (a) => a.break === brk && a.role === 'סייר', brk, 'סייר');
     }
 
-    rowFor('סיום יום', 'mgmt', (a) => a.break === 'סוף יום', 'סוף יום');
+    rowFor('סיום יום', 'mgmt', (a) => a.break === 'סוף יום', 'סוף יום', 'סוף יום');
   }
 
   // --- גרירה ---
@@ -1337,7 +1405,8 @@
 
     bigBoard.addEventListener('dragover', (e) => {
       const chip = e.target.closest('.chip');
-      if (!chip || dragIdx === null || Number(chip.dataset.idx) === dragIdx) return;
+      if (!chip || dragIdx === null) return;
+      if (!chip.classList.contains('chip-empty') && Number(chip.dataset.idx) === dragIdx) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       chip.classList.add('drop-target');
@@ -1352,10 +1421,33 @@
       e.preventDefault();
       const chip = e.target.closest('.chip');
       if (!chip || dragIdx === null) return;
+      if (chip.classList.contains('chip-empty')) {
+        moveToEmpty(dragIdx, {
+          day: chip.dataset.day, break: chip.dataset.break,
+          role: chip.dataset.role, area: chip.dataset.area || null,
+          idx: chip.dataset.idx2 === '' ? undefined : Number(chip.dataset.idx2),
+        });
+        return;
+      }
       const toIdx = Number(chip.dataset.idx);
       if (toIdx === dragIdx) return;
       swapAssignments(dragIdx, toIdx);
     });
+  }
+
+  // גרירת תורן אל עמדה שלא אוישה — הוא עובר לשם, ומקומו הקודם מתפנה.
+  function moveToEmpty(i, slot) {
+    const a = assignments[i];
+    if (!a || !slot || !slot.day) return;
+    const NL = String.fromCharCode(10);
+    const place = (x) => dayName(x.day) + ', ' + brkName(x.break) + ', ' + (x.area || x.role);
+    if (!confirm('להעביר את ' + a.teacherName + ' לעמדה שלא אוישה?' + NL + NL
+      + 'מ: ' + place(a) + NL + 'אל: ' + place(slot) + NL + NL
+      + 'העמדה הקודמת שלו תתפנה, והמערכת תנסה למצוא לה תורן אחר.')) return;
+    removeTeacher(a);
+    pinTeacher(slot, a.teacherName);
+    saveState();
+    computePlan(true);
   }
 
   // החלפה בין שני שיבוצים קיימים, לאחר אישור.
