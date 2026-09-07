@@ -773,6 +773,16 @@
     computePlan(false);
   });
 
+  // הרצה מחדש לפי הכללים הנוכחיים, בלי לאבד שום שינוי ידני. נחוץ כי לוח
+  // שנשמר לפני שינוי בכללים ממשיך להציג את המצב הישן עד ההרצה הבאה.
+  const refreshRulesBtn = $('refreshRulesBtn');
+  if (refreshRulesBtn) {
+    refreshRulesBtn.addEventListener('click', () => {
+      if (!assignments.length) return;
+      computePlan(true);
+    });
+  }
+
   // חלוקה מחדש של כל הלוח — ההסרות הידניות נשמרות, השיבוצים הידניים לא.
   // בלי האזהרה הזו לחיצה אחת מוחקת בשקט את כל מי ששובץ ידנית.
   if (redistributeBtn) {
@@ -842,6 +852,28 @@
     editsCleaned = before - (removed.length + manualPins.length);
   }
 
+  // כללי בית הספר משתנים (למשל: ביטול הפסקת צהריים ביום שלישי), ואז
+  // שינויים ידניים שנשמרו מצביעים על עמדות שכבר אינן קיימות. הם לא היו
+  // עושים דבר, אבל היו נשארים ברשימה ומבלבלים. כאן מסירים אותם.
+  let staleDropped = 0;
+  function pruneStaleEdits() {
+    const breaks = new Set();
+    const slots = new Set();
+    const add = (x) => {
+      breaks.add(x.day + '|' + x.break);
+      slots.add([x.day, x.break, x.area || '', x.role].join('|'));
+    };
+    assignments.forEach(add);
+    unfilled.forEach(add);
+    if (!breaks.size) return;
+
+    const before = removed.length + manualPins.length;
+    removed = removed.filter((b) => breaks.has(b.day + '|' + b.break));
+    manualPins = manualPins.filter((p) =>
+      slots.has([p.day, p.break, p.area || '', p.role].join('|')));
+    staleDropped += before - (removed.length + manualPins.length);
+  }
+
   function removeTeacher(a) {
     // נעיצה קודמת של אותו איש צוות באותה הפסקה הייתה מחזירה אותו מיד.
     manualPins = manualPins.filter((p) => !(p.teacher === a.teacherName
@@ -905,11 +937,14 @@
     if (!removedNote) return;
     const items = removed.map((b, i) => ({ kind: 'removed', i, b }))
       .concat(manualPins.map((p, i) => ({ kind: 'pin', i, b: p })));
-    if (!items.length && !editsCleaned) { hide(removedNote); return; }
+    if (!items.length && !editsCleaned && !staleDropped) { hide(removedNote); return; }
 
     removedNote.innerHTML =
       '<div class="mc-head"><strong>שינויים ידניים (' + items.length + ')</strong>'
       + '<button type="button" class="link-btn" id="undoAllBtn">בטל את כולם</button></div>'
+      + (staleDropped ? '<p class="mc-cleaned">הוסרו ' + staleDropped
+        + ' שינויים ידניים שהצביעו על עמדות שכבר אינן קיימות בלוח '
+        + '(למשל הפסקה שבוטלה).</p>' : '')
       + (editsCleaned ? '<p class="mc-cleaned">נוקו ' + editsCleaned
         + ' רישומים כפולים או סותרים מעבודה קודמת. בכל עמדה נשמרה הבחירה '
         + 'האחרונה שלכם — כדאי לעבור על הרשימה ולוודא שהיא נכונה.</p>' : '')
@@ -1092,6 +1127,7 @@
     if (data.fileId) fileId = data.fileId;
     lastSummary = data.summary || null;
     lastDownloadId = data.downloadId || null;
+    pruneStaleEdits();
     renderDuties();
     renderBoard();
     // הבדיקה השמית מוצגת תמיד ומתעדכנת בכל שינוי — בלי צורך ללחוץ עליה.

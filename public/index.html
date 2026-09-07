@@ -185,6 +185,8 @@
           <div class="duties-actions">
             <input type="search" id="dutyFilter" placeholder="חיפוש יום, הפסקה, גיזרה או שם..." />
             <span id="dutyFilterCount" class="filter-count"></span>
+            <button id="refreshRulesBtn" type="button" class="btn btn-secondary"
+                    title="מריץ את הלוח מחדש לפי כללי בית הספר העדכניים, ושומר את כל השינויים הידניים">↻ עדכן לפי הכללים</button>
             <button id="redistributeBtn" type="button" class="btn btn-secondary">חלק מחדש הכל</button>
           </div>
         </div>
@@ -197,6 +199,10 @@
           כל שינוי מוצג לאישור לפני ביצוע, ושאר הלוח נשמר.
           <br>
           כל שינוי ידני נרשם ברשימה שמתחת, ואפשר לבטל אותו בכל רגע.
+          <br>
+          <strong>עדכן לפי הכללים</strong> — לוח שנשמר לפני שינוי בכללי בית הספר
+          (למשל ביטול הפסקה ביום מסוים) אינו מתעדכן מאליו. הכפתור מריץ אותו
+          מחדש לפי הכללים העדכניים ושומר את כל השינויים הידניים שלכם.
         </p>
         <div id="removedNote" class="removed-note" hidden></div>
         <div class="table-wrap">
