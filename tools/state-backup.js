@@ -41,9 +41,19 @@ async function getState() {
   if (cmd === 'restore') {
     let file = fileArg && !/^https?:/.test(fileArg) ? fileArg : null;
     if (!file) {
-      const files = fs.existsSync(DIR) ? fs.readdirSync(DIR).filter((f) => f.endsWith('.json')).sort() : [];
+      // בוחרים לפי savedAt שבתוך הקובץ, לא לפי שם הקובץ: שמות בפורמטים
+      // שונים מסתדרים בסדר שגוי, ואז משחזרים גיבוי ישן על עבודה חדשה.
+      const files = (fs.existsSync(DIR) ? fs.readdirSync(DIR) : [])
+        .filter((f) => f.endsWith('.json'))
+        .map((f) => {
+          try {
+            const st = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')).state;
+            return { f, at: (st && st.savedAt) || '' };
+          } catch (_) { return { f, at: '' }; }
+        })
+        .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
       if (!files.length) { console.log('אין גיבויים בתיקיית backups.'); process.exit(1); }
-      file = path.join(DIR, files[files.length - 1]);
+      file = path.join(DIR, files[files.length - 1].f);
     }
     const st = JSON.parse(fs.readFileSync(file, 'utf8')).state;
     const now = await getState();
