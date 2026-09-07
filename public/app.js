@@ -692,16 +692,58 @@
     redistributeBtn.addEventListener('click', () => computePlan(false));
   }
 
+  // ---- שינויים ידניים: ההחלטה האחרונה גוברת ----
+  // בלי זה נעיצות ישנות נערמות: הן מוחלות לפני החדשות, תופסות את העמדה,
+  // וההחלפה החדשה "לא נתפסת". וכן — הסרה נשארה לנצח בלי דרך לבטלה.
+
+  const sameSlotAs = (p, x) => p.day === x.day && p.break === x.break
+    && (p.area || null) === (x.area || null) && p.role === x.role;
+
+  function pinTeacher(slot, teacher) {
+    manualPins = manualPins.filter((p) => !sameSlotAs(p, slot)
+      && !(p.teacher === teacher && p.day === slot.day && p.break === slot.break));
+    // שובץ מחדש להפסקה שהוסר ממנה — ההסרה בטלה.
+    removed = removed.filter((b) => !(b.teacher === teacher
+      && b.day === slot.day && b.break === slot.break));
+    manualPins.push({
+      teacher, day: slot.day, break: slot.break,
+      area: slot.area || null, role: slot.role, manual: true,
+    });
+  }
+
+  function removeTeacher(a) {
+    // נעיצה קודמת של אותו איש צוות באותה הפסקה הייתה מחזירה אותו מיד.
+    manualPins = manualPins.filter((p) => !(p.teacher === a.teacherName
+      && p.day === a.day && p.break === a.break));
+    if (!removed.some((b) => b.teacher === a.teacherName
+      && b.day === a.day && b.break === a.break)) {
+      removed.push({ teacher: a.teacherName, day: a.day, break: a.break, role: a.role, area: a.area || null });
+    }
+  }
+
   // ---- טבלת התורנויות ----
+
+  // סדר ההפסקות ביום, לצורך מיון הטבלה.
+  const BREAK_ORDER = ['תחילת יום', 'אחרי 1', 'אחרי 2', 'אחרי 3', 'אחרי 4',
+    'אחרי 5', 'אחרי 6', 'סוף יום'];
+  const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'סייר', 'מ"מ', 'סוף יום'];
+  const orderIn = (list, v) => { const i = list.indexOf(v); return i === -1 ? 99 : i; };
 
   function renderDuties() {
     const tb = dutiesTable.querySelector('tbody');
     tb.innerHTML = '';
-    assignments.forEach((a, i) => {
+    // הטבלה ממוינת לפי יום ← הפסקה ← תפקיד, אחרת שיבוץ ידני קופץ לראשה
+    // וקשה למצוא בה עמדה מסוימת.
+    const view = assignments.map((a, i) => ({ a, i })).sort((x, y) =>
+      orderIn(DAY_ORDER, x.a.day) - orderIn(DAY_ORDER, y.a.day)
+      || orderIn(BREAK_ORDER, x.a.break) - orderIn(BREAK_ORDER, y.a.break)
+      || orderIn(ROLE_ORDER, x.a.role) - orderIn(ROLE_ORDER, y.a.role)
+      || String(x.a.area || '').localeCompare(String(y.a.area || ''), 'he'));
+    view.forEach(({ a, i }) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${a.day}</td>
-        <td>${a.break}</td>
+        <td>${dayName(a.day)}</td>
+        <td>${brkName(a.break)}</td>
         <td>${a.role}</td>
         <td>${a.area || '—'}</td>
         <td class="t-name">${a.teacherName}</td>
@@ -713,15 +755,78 @@
         </td>`;
       tb.appendChild(tr);
     });
+    applyDutyFilter();
 
-    if (removed.length) {
-      removedNote.textContent = 'הוסרו ידנית: ' + removed.length
-        + ' תורנויות. הן לא יוחזרו לאותם מורים בחישובים הבאים.';
-      show(removedNote);
-    } else {
-      hide(removedNote);
-    }
+    renderManualChanges();
   }
+
+  // רשימת השינויים הידניים, כל אחד עם כפתור ביטול. בלעדיה הסרה הייתה
+  // החלטה סופית שאין ממנה חזרה, וזו הייתה תלונה מפורשת של ההנהלה.
+  function renderManualChanges() {
+    if (!removedNote) return;
+    const items = removed.map((b, i) => ({ kind: 'removed', i, b }))
+      .concat(manualPins.map((p, i) => ({ kind: 'pin', i, b: p })));
+    if (!items.length) { hide(removedNote); return; }
+
+    removedNote.innerHTML =
+      '<div class="mc-head"><strong>שינויים ידניים (' + items.length + ')</strong>'
+      + '<button type="button" class="link-btn" id="undoAllBtn">בטל את כולם</button></div>'
+      + '<ul class="mc-list">' + items.map((it) => {
+        const where = dayName(it.b.day) + ' · ' + brkName(it.b.break)
+          + (it.b.area ? ' · ' + it.b.area : (it.b.role ? ' · ' + it.b.role : ''));
+        const what = it.kind === 'removed'
+          ? '<span class="mc-out">הוסר</span> ' + it.b.teacher
+          : '<span class="mc-in">שובץ</span> ' + it.b.teacher;
+        return '<li>' + what + ' — ' + where
+          + ' <button type="button" class="link-btn mc-undo" data-kind="' + it.kind
+          + '" data-i="' + it.i + '">בטל</button></li>';
+      }).join('') + '</ul>';
+    show(removedNote);
+  }
+
+  if (removedNote) {
+    removedNote.addEventListener('click', (e) => {
+      if (e.target.id === 'undoAllBtn') {
+        if (!confirm('לבטל את כל השינויים הידניים ולחזור ללוח שהמערכת חישבה?')) return;
+        removed = [];
+        manualPins = [];
+        saveState();
+        computePlan(true);
+        return;
+      }
+      const btn = e.target.closest('.mc-undo');
+      if (!btn) return;
+      const i = Number(btn.dataset.i);
+      if (btn.dataset.kind === 'removed') {
+        const b = removed[i];
+        if (!b) return;
+        removed.splice(i, 1);
+        // ביטול הסרה מחזיר את התורן המקורי לעמדתו, ולא רק מסיר את החסימה:
+        // בלי הנעיצה, המחליף שנכנס במקומו נשאר שם והשינוי נראה כאילו לא בוצע.
+        if (b.role) pinTeacher(b, b.teacher);
+      } else {
+        manualPins.splice(i, 1);
+      }
+      saveState();
+      computePlan(true);
+    });
+  }
+
+  // סינון הטבלה — לאתר עמדה או תורן מסוים בלי לגלול 160 שורות.
+  const dutyFilter = $('dutyFilter');
+  function applyDutyFilter() {
+    const q = (dutyFilter && dutyFilter.value || '').trim();
+    const rows = dutiesTable.querySelectorAll('tbody tr');
+    let shown = 0;
+    rows.forEach((tr) => {
+      const hit = !q || tr.textContent.indexOf(q) !== -1;
+      tr.hidden = !hit;
+      if (hit) shown++;
+    });
+    const count = $('dutyFilterCount');
+    if (count) count.textContent = q ? shown + ' מתוך ' + rows.length : '';
+  }
+  if (dutyFilter) dutyFilter.addEventListener('input', applyDutyFilter);
 
   // הסרת תורן — המערכת תמצא מחליף לאותה הפסקה, ושאר הלוח נשמר.
   dutiesTable.addEventListener('click', (e) => {
@@ -732,7 +837,7 @@
       const where = a.day + ', ' + a.break + ', ' + (a.area || a.role);
       if (!confirm('להסיר את ' + a.teacherName + ' מ' + where + '?'
         + ' המערכת תמצא תורן אחר לעמדה, ושאר הלוח יישמר.')) return;
-      removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
+      removeTeacher(a);
       saveState();
       computePlan(true);
       return;
@@ -755,8 +860,9 @@
   function openSwap(idx) {
     const a = assignments[idx];
     if (!a) return;
-    const row = dutiesTable.querySelectorAll('tbody tr')[idx];
-    if (!row || row.querySelector('.swap-box')) return;
+    const row = dutiesTable.querySelector('tbody tr .btn-swap[data-idx="' + idx + '"]');
+    const tr = row && row.closest('tr');
+    if (!tr || tr.querySelector('.swap-box')) return;
 
     const options = availableFor(a);
     if (!options.length) {
@@ -764,7 +870,7 @@
       return;
     }
 
-    const cell = row.querySelector('td:last-child');
+    const cell = tr.querySelector('td:last-child');
     const box = document.createElement('div');
     box.className = 'swap-box';
     box.innerHTML = `
@@ -782,8 +888,9 @@
         + 'לשבץ: ' + to)) return;
 
       // המורה היוצא נחסם מהעמדה, והנכנס ננעץ אליה. שאר הלוח נשמר.
-      removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
-      manualPins.push({ teacher: to, day: a.day, break: a.break, area: a.area, role: a.role, manual: true });
+      removeTeacher(a);
+      pinTeacher(a, to);
+      saveState();
       computePlan(true);
     });
   }
@@ -914,10 +1021,7 @@
       let msg = 'לשבץ את ' + c.name + ' ל' + where + '?';
       if (c.reason) msg += NL + NL + 'שימו לב: ' + c.reason + '.';
       if (!confirm(msg)) return;
-      manualPins.push({
-        teacher: c.rawName, day: u.day, break: u.break,
-        area: u.area, role: u.role, manual: true,
-      });
+      pinTeacher(u, c.rawName);
       saveState();
       computePlan(true);
     });
@@ -1271,10 +1375,10 @@
     if (!confirm(msg)) return;
 
     // שני הצדדים נחסמים ממקומם הנוכחי וננעצים במקום החדש.
-    removed.push({ teacher: a.teacherName, day: a.day, break: a.break });
-    removed.push({ teacher: b.teacherName, day: b.day, break: b.break });
-    manualPins.push({ teacher: b.teacherName, day: a.day, break: a.break, area: a.area, role: a.role, manual: true });
-    manualPins.push({ teacher: a.teacherName, day: b.day, break: b.break, area: b.area, role: b.role, manual: true });
+    removeTeacher(a);
+    removeTeacher(b);
+    pinTeacher(a, b.teacherName);
+    pinTeacher(b, a.teacherName);
     saveState();
     computePlan(true);
   }

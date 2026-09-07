@@ -9,7 +9,8 @@
     "check": "node tools/check-files.js",
     "check:rules": "node tools/check-rules.js",
     "check:swap": "node tools/check-swap.js",
-    "check:all": "node tools/check-files.js && node tools/check-rules.js && node tools/check-swap.js"
+    "check:edits": "node tools/check-edits.js",
+    "check:all": "node tools/check-files.js && node tools/check-rules.js && node tools/check-swap.js && node tools/check-edits.js"
   },
   "engines": {
     "node": ">=18"

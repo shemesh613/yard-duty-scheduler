@@ -183,6 +183,8 @@
         <div class="duties-head">
           <h2>לוח התורנויות</h2>
           <div class="duties-actions">
+            <input type="search" id="dutyFilter" placeholder="חיפוש יום, הפסקה, גיזרה או שם..." />
+            <span id="dutyFilterCount" class="filter-count"></span>
             <button id="redistributeBtn" type="button" class="btn btn-secondary">חלק מחדש הכל</button>
           </div>
         </div>
@@ -193,8 +195,10 @@
           <strong>החלף</strong> — בוחרים מורה אחר לאותה עמדה.
           <strong>הסר</strong> — המערכת מוצאת מחליף בעצמה.
           כל שינוי מוצג לאישור לפני ביצוע, ושאר הלוח נשמר.
+          <br>
+          כל שינוי ידני נרשם ברשימה שמתחת, ואפשר לבטל אותו בכל רגע.
         </p>
-        <p id="removedNote" class="removed-note" hidden></p>
+        <div id="removedNote" class="removed-note" hidden></div>
         <div class="table-wrap">
           <table id="dutiesTable" class="duties-table">
             <thead>
