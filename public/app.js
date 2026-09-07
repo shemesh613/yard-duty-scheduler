@@ -411,6 +411,7 @@
       staff = st.staff || [];
       violations = st.violations || [];
       unfilled = st.unfilled || [];
+      normalizeEdits();
       lastSummary = st.summary || null;
       lastDownloadId = st.downloadId || null;
 
@@ -726,6 +727,36 @@
     });
   }
 
+  // עבודה שנשמרה בגרסה ישנה מכילה רישומים סותרים: שתי נעיצות על אותה
+  // עמדה, נעיצות כפולות, והסרה של מי שאחר כך שובץ חזרה. שם הנעיצה
+  // הישנה הייתה גוברת על החדשה. כאן מנקים אותם בטעינה — האחרון גובר.
+  let editsCleaned = 0;
+  function normalizeEdits() {
+    const before = removed.length + manualPins.length;
+    const slotKeyOf = (p) => [p.day, p.break, p.area || '', p.role,
+      (p.idx != null ? p.idx : '')].join('|');
+    const manKeyOf = (p) => [p.teacher, p.day, p.break].join('|');
+
+    const lastForSlot = new Map();
+    manualPins.forEach((p) => lastForSlot.set(slotKeyOf(p), p));
+    manualPins = manualPins.filter((p) => lastForSlot.get(slotKeyOf(p)) === p);
+
+    const lastForMan = new Map();
+    manualPins.forEach((p) => lastForMan.set(manKeyOf(p), p));
+    manualPins = manualPins.filter((p) => lastForMan.get(manKeyOf(p)) === p);
+
+    // הסרה של מי שננעץ במפורש לאותה הפסקה בטלה — הנעיצה גוברת ממילא.
+    const pinnedMen = new Set(manualPins.map(manKeyOf));
+    const seenRm = new Set();
+    removed = removed.filter((b) => {
+      const k = manKeyOf(b);
+      if (seenRm.has(k) || pinnedMen.has(k)) return false;
+      seenRm.add(k);
+      return true;
+    });
+    editsCleaned = before - (removed.length + manualPins.length);
+  }
+
   function removeTeacher(a) {
     // נעיצה קודמת של אותו איש צוות באותה הפסקה הייתה מחזירה אותו מיד.
     manualPins = manualPins.filter((p) => !(p.teacher === a.teacherName
@@ -789,11 +820,14 @@
     if (!removedNote) return;
     const items = removed.map((b, i) => ({ kind: 'removed', i, b }))
       .concat(manualPins.map((p, i) => ({ kind: 'pin', i, b: p })));
-    if (!items.length) { hide(removedNote); return; }
+    if (!items.length && !editsCleaned) { hide(removedNote); return; }
 
     removedNote.innerHTML =
       '<div class="mc-head"><strong>שינויים ידניים (' + items.length + ')</strong>'
       + '<button type="button" class="link-btn" id="undoAllBtn">בטל את כולם</button></div>'
+      + (editsCleaned ? '<p class="mc-cleaned">נוקו ' + editsCleaned
+        + ' רישומים כפולים או סותרים מעבודה קודמת. בכל עמדה נשמרה הבחירה '
+        + 'האחרונה שלכם — כדאי לעבור על הרשימה ולוודא שהיא נכונה.</p>' : '')
       + '<ul class="mc-list">' + items.map((it) => {
         const where = dayName(it.b.day) + ' · ' + brkName(it.b.break)
           + (it.b.area ? ' · ' + it.b.area : (it.b.role ? ' · ' + it.b.role : ''));

@@ -578,3 +578,4 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
   font-weight: 600; cursor: default;
 }
 .chip-empty.drop-target { background: #fde68a; border-style: solid; }
+.mc-cleaned { margin: 6px 0 8px; font-size: .82rem; color: #92400e; }
