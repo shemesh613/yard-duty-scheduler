@@ -354,7 +354,11 @@ function readSavedState() {
 // המודל המצומצם שדרוש לבניית הלוח, מתוך המצב השמור.
 function modelFromState(st) {
   const insp = (st && st.inspectData) || {};
-  return { meta: insp.meta || {}, classes: insp.classes || [], teachers: insp.teachers || [] };
+  // המצב השמור אינו נושא מזהי מורים — נותנים מזהה יציב לפי המיקום ברשימה,
+  // כדי שגיליון הבקרה יידע לחבר בין מורה למכסה שלו.
+  const teachers = (insp.teachers || []).map((t, i) =>
+    (t && t.id != null) ? t : Object.assign({}, t, { id: 'n' + i }));
+  return { meta: insp.meta || {}, classes: insp.classes || [], teachers };
 }
 
 // GET /view — דף צפייה בלבד בלוח האחרון. אותו עיצוב כמו "לוח למורים",
@@ -432,13 +436,51 @@ app.get('/api/board', (req, res) => {
   }
 });
 
+/* הקבצים שנוצרו בהרצה נשמרים ב-output/, והדיסק של השרת החינמי נמחק
+   בכל עלייה מחדש. במקום להחזיר "הקובץ לא נמצא", בונים אותם שוב מהלוח
+   האחרון שנשמר. המשתמשת לא אמורה לדעת שהשרת עלה מחדש. */
+
+function dutyPlanFromState(st) {
+  const teachers = modelFromState(st).teachers;
+  const idOf = {};
+  for (const t of teachers) if (t && t.name != null) idOf[t.name] = t.id;
+  const perTeacher = {};
+  for (const x of (st.staff || [])) {
+    const id = (x && x.id != null) ? x.id : idOf[x && x.name];
+    if (id != null) perTeacher[id] = x;
+  }
+  return {
+    assignments: st.assignments || [],
+    perTeacher,
+    violations: st.violations || [],
+    unfilled: st.unfilled || [],
+  };
+}
+
+const NO_BOARD = 'עדיין אין לוח שמור. היכנסו למערכת, ואם מוצע "שחזר" — לחצו עליו. '
+  + 'לאחר מכן הקובץ ייווצר שוב.';
+
 // GET /api/download/:id → הורדת קובץ האקסל מ-output/
 app.get('/api/download/:id', (req, res) => {
   // אבטחה: רק תווים מותרים במזהה כדי למנוע מעבר נתיב
   const id = String(req.params.id || '').replace(/[^a-zA-Z0-9]/g, '');
   const filePath = path.join(OUTPUT_DIR, `${id}.xlsx`);
   if (!id || !fs.existsSync(filePath)) {
-    return res.status(404).send('הקובץ לא נמצא או שפג תוקפו.');
+    // נמחק בעליית השרת — בונים מחדש מהלוח השמור.
+    const st = readSavedState();
+    if (st && Array.isArray(st.assignments) && st.assignments.length) {
+      try {
+        const report = require('./src/engine/report.js');
+        const buf = report.buildWorkbook(modelFromState(st), null, dutyPlanFromState(st));
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.set('Content-Disposition',
+          'attachment; filename="duties.xlsx"; filename*=UTF-8\'\'' + encodeURIComponent('לוח תורנויות.xlsx'));
+        return res.send(buf);
+      } catch (err) {
+        console.error('בנייה מחדש של האקסל נכשלה:', err && err.stack ? err.stack : err);
+      }
+    }
+    return res.status(404).type('text/plain; charset=utf-8').send(NO_BOARD);
   }
   res.download(filePath, 'לוחות-תורנויות-ומגרש.xlsx');
 });
@@ -448,7 +490,19 @@ app.get('/api/teachers-sheet/:id', (req, res) => {
   const id = String(req.params.id || '').replace(/[^a-zA-Z0-9]/g, '');
   const filePath = path.join(OUTPUT_DIR, `${id}.html`);
   if (!id || !fs.existsSync(filePath)) {
-    return res.status(404).send('הקובץ לא נמצא או שפג תוקפו.');
+    // נמחק בעליית השרת — בונים את הלוח מחדש מהמצב השמור.
+    const st = readSavedState();
+    if (st && Array.isArray(st.assignments) && st.assignments.length) {
+      try {
+        const report = require('./src/engine/report.js');
+        res.set('Cache-Control', 'no-store');
+        return res.type('html').send(
+          report.buildBoardHtml(modelFromState(st), { assignments: st.assignments }));
+      } catch (err) {
+        console.error('בנייה מחדש של הלוח למורים נכשלה:', err && err.stack ? err.stack : err);
+      }
+    }
+    return res.status(404).type('text/plain; charset=utf-8').send(NO_BOARD);
   }
   res.type('html').send(fs.readFileSync(filePath, 'utf8'));
 });

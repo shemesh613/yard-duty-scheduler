@@ -905,6 +905,7 @@ function assignDuties(model, rules, options = {}) {
 
   // תמונת מצב מלאה לכל איש צוות — הבסיס לדוח הבדיקה השמי בממשק.
   const ptEntry = (t, st, quotaOk, base, under) => ({
+    id: t.id,
     name: t.name,
     short: shortName(t.name),
     type: t.type,
