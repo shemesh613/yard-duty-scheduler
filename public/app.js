@@ -4,6 +4,38 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // סיסמת עריכה — קיימת רק אם ההנהלה הפעילה אותה בשרת. ברירת המחדל:
+  // אין סיסמה, ואז שום דבר בהתנהגות לא משתנה.
+  const KEY_STORE = 'yardDutyEditKey';
+  const editKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (_) { return ''; } };
+  function askEditKey(msg) {
+    const k = prompt(msg || 'הזינו את סיסמת העריכה:');
+    if (k == null) return false;
+    try { localStorage.setItem(KEY_STORE, k.trim()); } catch (_) { /* אין גישה */ }
+    return true;
+  }
+
+  // עוטף fetch: מוסיף את הסיסמה, ואם השרת דורש אותה — מבקש ומנסה שוב.
+  async function send(url, opts) {
+    const withKey = () => {
+      const o = Object.assign({}, opts);
+      o.headers = Object.assign({}, (opts && opts.headers) || {});
+      const k = editKey();
+      // מקודדים: כותרת HTTP אינה יכולה לשאת תווים בעברית.
+      if (k) o.headers['x-edit-key'] = encodeURIComponent(k);
+      return o;
+    };
+    let resp = await fetch(url, withKey());
+    if (resp.status === 401) {
+      let data = null;
+      try { data = await resp.clone().json(); } catch (_) { /* לא JSON */ }
+      const msg = (data && data.error) || 'העריכה מוגנת בסיסמה.';
+      if (!askEditKey(msg + String.fromCharCode(10) + 'סיסמת עריכה:')) return resp;
+      resp = await fetch(url, withKey());
+    }
+    return resp;
+  }
+
   const dropZone = $('dropZone');
   const fileInput = $('fileInput');
   const browseBtn = $('browseBtn');
@@ -200,7 +232,7 @@
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
-      const resp = await fetch('/api/inspect', { method: 'POST', body: fd });
+      const resp = await send('/api/inspect', { method: 'POST', body: fd });
       const data = await resp.json();
       hide(loading);
       if (!data.ok) {
@@ -447,7 +479,7 @@
       const st = currentState();
       st.savedAt = new Date().toISOString();
       try { localStorage.setItem(LOCAL_KEY, JSON.stringify(st)); } catch (_) { /* אין מקום */ }
-      fetch('/api/state', {
+      send('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: st }),
@@ -457,7 +489,7 @@
 
   function clearState() {
     try { localStorage.removeItem(LOCAL_KEY); } catch (_) { /* אין גישה */ }
-    fetch('/api/state', { method: 'DELETE' }).catch(() => {});
+    send('/api/state', { method: 'DELETE' }).catch(() => {});
   }
 
   function applyState(st) {
@@ -563,7 +595,7 @@
         const fd = new FormData();
         fd.append('fileId', st.fileId);
         fd.append('overrides', '{}');
-        const probe = await fetch('/api/run', { method: 'POST', body: fd });
+        const probe = await send('/api/run', { method: 'POST', body: fd });
         const pd = await probe.json();
         if (!pd.ok) throw new Error('missing');
       } catch (_) {
@@ -636,7 +668,7 @@
 
       saveClassesBtn.disabled = true;
       try {
-        const resp = await fetch('/api/save-classes', {
+        const resp = await send('/api/save-classes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ genderByClass }),
@@ -716,7 +748,7 @@
         } else if (selectedFile) fd.append('file', selectedFile);
         else if (fileId) fd.append('fileId', fileId);
         fd.append('overrides', JSON.stringify(overrides));
-        return fetch('/api/run', { method: 'POST', body: fd });
+        return send('/api/run', { method: 'POST', body: fd });
       };
 
       let resp = await send(false);

@@ -78,6 +78,29 @@ function uiVersion() {
   return String(Math.floor(newest));
 }
 
+/* ---------------- הגנת עריכה (אופציונלית) ----------------
+   כברירת מחדל אין הגנה, והמערכת מתנהגת בדיוק כמו קודם. אם מוגדר
+   משתנה סביבה EDIT_KEY, כל פעולה שכותבת משהו — העלאת קובץ, חישוב,
+   שמירה או מחיקה — דורשת אותו. צפייה בלבד (‎/view, ‎/api/board)
+   נשארת פתוחה תמיד. */
+
+const EDIT_KEY = String(process.env.EDIT_KEY || '').trim();
+
+function requireEditKey(req, res, next) {
+  if (!EDIT_KEY) return next();
+  // כותרות HTTP אינן נושאות תווים שאינם אנגליים, ולכן הסיסמה נשלחת
+  // מקודדת. משווים גם לערך המפוענח, כדי שסיסמה בעברית תעבוד גם היא.
+  const raw = String(req.get('x-edit-key') || req.query.key || '').trim();
+  let decoded = raw;
+  try { decoded = decodeURIComponent(raw); } catch (_) { /* לא מקודד */ }
+  if (raw === EDIT_KEY || decoded === EDIT_KEY) return next();
+  return res.status(401).json({
+    ok: false,
+    needKey: true,
+    error: 'העריכה מוגנת בסיסמה. הזינו את סיסמת העריכה כדי להמשיך.',
+  });
+}
+
 // GET / → מגיש את עמוד הממשק, עם חותמת גרסה על הנכסים
 app.get('/', (req, res) => {
   try {
@@ -93,7 +116,7 @@ app.get('/', (req, res) => {
 });
 
 // POST /api/run — קבלת קובץ אקסל, הרצת הצינור, החזרת סיכום + HTML + מזהה הורדה
-app.post('/api/run', upload.single('file'), (req, res) => {
+app.post('/api/run', requireEditKey, upload.single('file'), (req, res) => {
   try {
     // הקובץ מגיע בהעלאה, או לפי מזהה של קובץ שכבר הועלה — כדי שאפשר יהיה
     // לחשב מחדש אחרי שחזור מצב שמור, בלי להעלות שוב.
@@ -167,7 +190,7 @@ app.post('/api/run', upload.single('file'), (req, res) => {
 
 // POST /api/inspect — פירוק הקובץ והסקת מטא-דאטה בלבד (בלי חישוב לוחות),
 // כדי לאכלס את מסך ההגדרות הויזואלי. מחזיר רשימת מורים וכיתות עם הערכים שהוסקו.
-app.post('/api/inspect', upload.single('file'), (req, res) => {
+app.post('/api/inspect', requireEditKey, upload.single('file'), (req, res) => {
   try {
     let buffer, fileId;
     if (req.file) {
@@ -263,7 +286,7 @@ app.get('/api/state', (req, res) => {
 });
 
 // POST /api/state → שמירת המצב הנוכחי
-app.post('/api/state', express.json({ limit: '8mb' }), (req, res) => {
+app.post('/api/state', requireEditKey, express.json({ limit: '8mb' }), (req, res) => {
   try {
     const state = (req.body && req.body.state) || null;
     if (!state) return res.status(400).json({ ok: false, error: 'לא התקבל מצב לשמירה.' });
@@ -277,14 +300,14 @@ app.post('/api/state', express.json({ limit: '8mb' }), (req, res) => {
 });
 
 // DELETE /api/state → מחיקת המצב השמור
-app.delete('/api/state', (req, res) => {
+app.delete('/api/state', requireEditKey, (req, res) => {
   try { fs.unlinkSync(STATE_FILE); } catch (_) { /* לא קיים */ }
   return res.json({ ok: true });
 });
 
 // POST /api/save-classes — שמירת מגדר הכיתות לשנה הנוכחית.
 // נכתב ל-config/classes.json ומשם גובר על כל זיהוי אוטומטי בהעלאות הבאות.
-app.post('/api/save-classes', express.json({ limit: '256kb' }), (req, res) => {
+app.post('/api/save-classes', requireEditKey, express.json({ limit: '256kb' }), (req, res) => {
   try {
     const incoming = (req.body && req.body.genderByClass) || {};
     const clean = {};
@@ -316,6 +339,96 @@ app.get('/decisions', (req, res) => {
     res.type('html').send(renderDecisions(md));
   } catch (err) {
     res.status(404).send('קובץ התיעוד לא נמצא.');
+  }
+});
+
+/* ---------------- צפייה בלבד ----------------
+   שני מסלולים שאינם כותבים דבר: הם קוראים את הלוח האחרון שההנהלה
+   שמרה ומחזירים אותו. אין בהם העלאה, חישוב, שמירה או מחיקה, ולכן
+   אי אפשר לשנות או להרוס דרכם שום דבר — גם לא בטעות. */
+
+function readSavedState() {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (_) { return null; }
+}
+
+// המודל המצומצם שדרוש לבניית הלוח, מתוך המצב השמור.
+function modelFromState(st) {
+  const insp = (st && st.inspectData) || {};
+  return { meta: insp.meta || {}, classes: insp.classes || [], teachers: insp.teachers || [] };
+}
+
+// GET /view — דף צפייה בלבד בלוח האחרון. אותו עיצוב כמו "לוח למורים",
+// כולל הכפתורים לשמירה כתמונה או כ-PDF.
+app.get('/view', (req, res) => {
+  const st = readSavedState();
+  if (!st || !Array.isArray(st.assignments) || !st.assignments.length) {
+    return res.status(404).type('html').send(
+      '<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">'
+      + '<title>לוח תורנויות</title><style>body{font-family:Arial,sans-serif;'
+      + 'padding:40px;text-align:center;color:#444}</style></head><body>'
+      + '<h1>עדיין אין לוח מפורסם</h1>'
+      + '<p>ההנהלה טרם שמרה לוח, או שהשרת עלה מחדש והלוח נטען מהדפדפן שלה בלבד.</p>'
+      + '</body></html>');
+  }
+  try {
+    const report = require('./src/engine/report.js');
+    const html = report.buildBoardHtml(modelFromState(st), { assignments: st.assignments });
+    const when = st.savedAt ? new Date(st.savedAt).toLocaleString('he-IL') : '';
+    // באנר קבוע שמבהיר שזו צפייה בלבד, ומתי הלוח עודכן לאחרונה.
+    const banner = '<div class="no-print" style="background:#eefbf0;border-color:#b6e3c1;'
+      + 'color:#1d5b32"><strong>צפייה בלבד</strong>'
+      + '<span class="hint">אי אפשר לשנות דבר מהעמוד הזה. '
+      + (when ? 'הלוח עודכן לאחרונה ב-' + when + '. ' : '')
+      + 'רענון העמוד מציג את הגרסה העדכנית.</span></div>';
+    res.set('Cache-Control', 'no-store');
+    return res.type('html').send(html.replace('<div class="no-print">', banner + '<div class="no-print">'));
+  } catch (err) {
+    console.error('שגיאה בבניית דף הצפייה:', err && err.stack ? err.stack : err);
+    return res.status(500).type('html').send('<h1>שגיאה בהצגת הלוח</h1>');
+  }
+});
+
+// GET /api/board — אותם נתונים כ-JSON, למי שרוצה להציג אותם באתר משלו.
+// פתוח לקריאה מכל מקור (CORS), ואינו מקבל שום נתון.
+app.get('/api/board', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'no-store');
+  const st = readSavedState();
+  if (!st || !Array.isArray(st.assignments)) {
+    return res.json({ ok: true, published: false, board: null, assignments: [] });
+  }
+  try {
+    const report = require('./src/engine/report.js');
+    const model = modelFromState(st);
+    const board = report.buildBoardData(model, { assignments: st.assignments });
+
+    // תורנויות לפי איש צוות — הצורה הנוחה ביותר לאתר של איש צוות אחר.
+    const byTeacher = {};
+    for (const a of st.assignments) {
+      (byTeacher[a.teacherName] = byTeacher[a.teacherName] || []).push({
+        day: a.day, break: a.break, role: a.role, area: a.area || null,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      published: true,
+      savedAt: st.savedAt || null,
+      school: board.school,
+      source: st.fileName || null,
+      days: board.days,
+      board: board.rows,
+      assignments: st.assignments.map((a) => ({
+        day: a.day, break: a.break, role: a.role, area: a.area || null, teacher: a.teacherName,
+      })),
+      byTeacher,
+      unfilled: (st.unfilled || []).map((u) => ({
+        day: u.day, break: u.break, role: u.role, area: u.area || null,
+      })),
+    });
+  } catch (err) {
+    console.error('שגיאה ב-/api/board:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ ok: false, error: 'שגיאה בבניית הלוח.' });
   }
 });
 

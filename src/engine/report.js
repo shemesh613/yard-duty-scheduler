@@ -639,7 +639,9 @@ function dutiesByTeacher(days, dutyPlan) {
    שורות: תחילת יום, ואז לכל הפסקה — בנות / בנים / דינמיקלאס / מ"מ / סיירת,
    ולבסוף סיום יום. עמודות: ימי השבוע. */
 
-function buildBoardHtml(model, dutyPlan) {
+// מבנה הלוח כנתונים. משמש את דף ההדפסה, את ציור התמונה, ואת צפייה
+// בלבד (‎/view ו-‎/api/board) — כך יש מקור אמת אחד לכל התצוגות.
+function buildBoardData(model, dutyPlan) {
   const days = sortDays(collectDays(model, null, dutyPlan));
   const assignments = asArr(asObj(dutyPlan).assignments);
   const zg = zoneGenders(model) || {};
@@ -696,6 +698,20 @@ function buildBoardHtml(model, dutyPlan) {
   data.push({ kind: 'mgmt', label: 'סיום יום', zones: [],
     cells: days.map((d) => pick(d, 'סוף יום', () => true).map(displayName)) });
 
+  return {
+    title: 'לוח תורנויות שבועי',
+    school: school,
+    date: new Date().toLocaleDateString('he-IL'),
+    days: days.map(dayDisplay),
+    rows: data,
+  };
+}
+
+function buildBoardHtml(model, dutyPlan) {
+  const boardData = buildBoardData(model, dutyPlan);
+  const school = boardData.school;
+  const today = boardData.date;
+
   const cell = (names) => names.length
     ? `<td>${names.map((n) => `<span class="nm">${esc(n)}</span>`).join('')}</td>`
     : '<td class="empty"></td>';
@@ -703,19 +719,12 @@ function buildBoardHtml(model, dutyPlan) {
   const CLS = { mgmt: 'mgmt', girls: 'duty girls', boys: 'duty boys',
     sub: 'sub-row', 'sub patrol': 'sub-row patrol' };
 
-  const rows = data.map((r) =>
+  const rows = boardData.rows.map((r) =>
     `<tr class="${CLS[r.kind] || ''}"><th class="rh">${esc(r.label)}</th>`
     + `<td class="zones">${r.zones.map((z) => `<span class="zn">${esc(z)}</span>`).join('')}</td>`
     + r.cells.map(cell).join('') + '</tr>');
 
-  const today = new Date().toLocaleDateString('he-IL');
-  const boardData = {
-    title: 'לוח תורנויות שבועי',
-    school: school,
-    date: today,
-    days: days.map(dayDisplay),
-    rows: data,
-  };
+  const days = boardData.days;
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -778,7 +787,7 @@ function buildBoardHtml(model, dutyPlan) {
   <div class="table-wrap">
     <table>
       <thead><tr><th class="corner"></th><th class="corner">גיזרות</th>${
-        days.map((d) => `<th>${esc(dayDisplay(d))}</th>`).join('')}</tr></thead>
+        days.map((d) => `<th>${esc(d)}</th>`).join('')}</tr></thead>
       <tbody>${rows.join('\n')}</tbody>
     </table>
   </div>
@@ -1051,4 +1060,4 @@ function buildTeacherHtml(model, dutyPlan) {
 </html>`;
 }
 
-module.exports = { buildWorkbook, buildHtml, buildTeacherHtml, buildBoardHtml };
+module.exports = { buildWorkbook, buildHtml, buildTeacherHtml, buildBoardHtml, buildBoardData };
