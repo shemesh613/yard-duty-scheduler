@@ -10,10 +10,11 @@
     "check:rules": "node tools/check-rules.js",
     "check:swap": "node tools/check-swap.js",
     "check:edits": "node tools/check-edits.js",
+    "check:client": "node tools/check-client.js",
     "state:save": "node tools/state-backup.js save",
     "state:restore": "node tools/state-backup.js restore",
     "state:show": "node tools/state-backup.js show",
-    "check:all": "node tools/check-files.js && node tools/check-rules.js && node tools/check-swap.js && node tools/check-edits.js"
+    "check:all": "node tools/check-files.js && node tools/check-rules.js && node tools/check-swap.js && node tools/check-edits.js && node tools/check-client.js"
   },
   "engines": {
     "node": ">=18"

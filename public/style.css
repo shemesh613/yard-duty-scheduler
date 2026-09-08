@@ -579,3 +579,7 @@ tr.needs-attention .t-name::after { content: ' ⚠'; color: #c47f1a; }
 }
 .chip-empty.drop-target { background: #fde68a; border-style: solid; }
 .mc-cleaned { margin: 6px 0 8px; font-size: .82rem; color: #92400e; }
+.change-flash.problem {
+  background: #b91c1c; color: #fff; cursor: pointer;
+  max-width: min(90vw, 520px); line-height: 1.4; text-align: center;
+}

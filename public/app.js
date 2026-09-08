@@ -198,6 +198,12 @@
   function showError(title, detail) {
     $('errorTitle').textContent = title || 'אירעה שגיאה';
     errorDetail.textContent = detail || '';
+    // שגיאה בשינוי ידני קרתה בתחתית העמוד, וקופסת השגיאה נשארה למעלה
+    // מחוץ למסך — נראה כאילו "פשוט לא קרה כלום". עכשיו אי אפשר לפספס.
+    flashProblem(title || 'אירעה שגיאה');
+    setTimeout(() => {
+      try { errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { /* ישן */ }
+    }, 0);
     hide(loading);
     show(errorBox);
   }
@@ -739,7 +745,9 @@
           })));
       }
 
-      const send = (useBytes) => {
+      // שם שונה מ-send במכוון: קריאה ל-send מתוך פונקציה ששמה send תקרא
+      // לעצמה במקום לעטיפה, וזה בדיוק מה שקרה כאן פעם אחת.
+      const postRun = (useBytes) => {
         const fd = new FormData();
         if (selectedFile && !useBytes) fd.append('file', selectedFile);
         else if (useBytes && fileData) {
@@ -751,7 +759,7 @@
         return send('/api/run', { method: 'POST', body: fd });
       };
 
-      let resp = await send(false);
+      let resp = await postRun(false);
       let data;
       try { data = await resp.json(); }
       catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
@@ -761,7 +769,7 @@
         // אין עותק? מבקשים מהמשתמש לבחור שוב את אותו קובץ.
         const ready = fileData ? true : await askForFileAgain();
         if (ready) {
-          resp = await send(!selectedFile);
+          resp = await postRun(!selectedFile);
           try { data = await resp.json(); }
           catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
         }
@@ -1159,6 +1167,8 @@
     if (data.fileId) fileId = data.fileId;
     lastSummary = data.summary || null;
     lastDownloadId = data.downloadId || null;
+    const pf = document.getElementById('problemFlash');
+    if (pf) pf.classList.remove('show');
     pruneStaleEdits();
     renderDuties();
     renderBoard();
@@ -1188,6 +1198,20 @@
       window.scrollTo({ top: keepScroll });
       keepScroll = null;
     }
+  }
+
+  // חיווי אדום, נשאר על המסך עד שלוחצים עליו. משמש כשפעולה נכשלה.
+  function flashProblem(text) {
+    let el = document.getElementById('problemFlash');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'problemFlash';
+      el.className = 'change-flash problem';
+      el.addEventListener('click', () => el.classList.remove('show'));
+      document.body.appendChild(el);
+    }
+    el.textContent = '⚠ ' + text + ' — לחצו לסגירה';
+    el.classList.add('show');
   }
 
   // חיווי קצר שהשינוי נקלט — מחליף את קפיצת המסך שהייתה קודם.
