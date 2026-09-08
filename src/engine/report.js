@@ -661,48 +661,61 @@ function buildBoardHtml(model, dutyPlan) {
     .filter((a) => a.day === day && a.break === brk && fn(a))
     .map((a) => str(a.teacherName));
 
-  const cell = (names) => names.length
-    ? `<td>${names.map((n) => `<span class="nm">${esc(displayName(n))}</span>`).join('')}</td>`
-    : '<td class="empty"></td>';
+  // מבנה הלוח נבנה פעם אחת כנתונים, ומשמש גם ל-HTML להדפסה וגם לציור
+  // התמונה בדפדפן. כך אין שני מקורות אמת שיכולים להיפרד זה מזה.
+  const data = [];
 
-  const rows = [];
-
-  // תחילת יום
-  rows.push(`<tr class="mgmt"><th class="rh">תחילת יום</th><td class="zones"></td>`
-    + days.map((d) => cell(pick(d, 'תחילת יום', () => true))).join('') + '</tr>');
+  data.push({ kind: 'mgmt', label: 'תחילת יום', zones: [],
+    cells: days.map((d) => pick(d, 'תחילת יום', () => true).map(displayName)) });
 
   for (const brk of regular) {
     const label = breakDisplay(brk);
 
     for (const gender of ['בנות', 'בנים']) {
-      const zones = zonesOf(gender);
-      const zoneList = zones.map((z) => `<span class="zn">${esc(z)}</span>`).join('');
-      const cells = days.map((d) =>
-        cell(pick(d, brk, (a) => a.area && zg[a.area] === gender))).join('');
-      rows.push(`<tr class="duty ${gender === 'בנים' ? 'boys' : 'girls'}">`
-        + `<th class="rh">${esc(label)} ${gender}</th>`
-        + `<td class="zones">${zoneList}</td>${cells}</tr>`);
+      data.push({
+        kind: gender === 'בנים' ? 'boys' : 'girls',
+        label: label + ' ' + gender,
+        zones: zonesOf(gender),
+        cells: days.map((d) => pick(d, brk, (a) => a.area && zg[a.area] === gender).map(displayName)),
+      });
     }
 
     // דינמיקלאס — רק בימים ובהפסקות שבהם הוא מתקיים.
-    const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס'));
+    const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס').map(displayName));
     if (dyn.some((x) => x.length)) {
-      rows.push('<tr class="sub-row"><th class="rh">דינמיקלאס</th><td class="zones"></td>'
-        + dyn.map(cell).join('') + '</tr>');
+      data.push({ kind: 'sub', label: 'דינמיקלאס', zones: [], cells: dyn });
     }
 
-    rows.push('<tr class="sub-row"><th class="rh">מ"מ תורנות</th><td class="zones"></td>'
-      + days.map((d) => cell(pick(d, brk, (a) => a.role === 'מ"מ'))).join('') + '</tr>');
+    data.push({ kind: 'sub', label: 'מ"מ תורנות', zones: [],
+      cells: days.map((d) => pick(d, brk, (a) => a.role === 'מ"מ').map(displayName)) });
 
-    rows.push(`<tr class="sub-row patrol"><th class="rh">סיירת (${esc(label.replace('הפסקת ', ''))})</th><td class="zones"></td>`
-      + days.map((d) => cell(pick(d, brk, (a) => a.role === 'סייר'))).join('') + '</tr>');
+    data.push({ kind: 'sub patrol', label: 'סיירת (' + label.replace('הפסקת ', '') + ')', zones: [],
+      cells: days.map((d) => pick(d, brk, (a) => a.role === 'סייר').map(displayName)) });
   }
 
-  // סיום יום
-  rows.push('<tr class="mgmt"><th class="rh">סיום יום</th><td class="zones"></td>'
-    + days.map((d) => cell(pick(d, 'סוף יום', () => true))).join('') + '</tr>');
+  data.push({ kind: 'mgmt', label: 'סיום יום', zones: [],
+    cells: days.map((d) => pick(d, 'סוף יום', () => true).map(displayName)) });
+
+  const cell = (names) => names.length
+    ? `<td>${names.map((n) => `<span class="nm">${esc(n)}</span>`).join('')}</td>`
+    : '<td class="empty"></td>';
+
+  const CLS = { mgmt: 'mgmt', girls: 'duty girls', boys: 'duty boys',
+    sub: 'sub-row', 'sub patrol': 'sub-row patrol' };
+
+  const rows = data.map((r) =>
+    `<tr class="${CLS[r.kind] || ''}"><th class="rh">${esc(r.label)}</th>`
+    + `<td class="zones">${r.zones.map((z) => `<span class="zn">${esc(z)}</span>`).join('')}</td>`
+    + r.cells.map(cell).join('') + '</tr>');
 
   const today = new Date().toLocaleDateString('he-IL');
+  const boardData = {
+    title: 'לוח תורנויות שבועי',
+    school: school,
+    date: today,
+    days: days.map(dayDisplay),
+    rows: data,
+  };
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -718,9 +731,16 @@ function buildBoardHtml(model, dutyPlan) {
     font-family:"Segoe UI","Arial Hebrew",Arial,sans-serif; font-size:13px;
   }
   .no-print{
-    margin-bottom:16px; padding:9px 13px; background:#eef3fb;
+    margin-bottom:16px; padding:11px 13px; background:#eef3fb;
     border:1px solid #c3d4ee; border-radius:8px; font-size:13px; color:#24406e;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   }
+  .no-print button{
+    font:inherit; font-size:13px; padding:7px 14px; cursor:pointer;
+    background:#fff; color:#24406e; border:1px solid #9db6dd; border-radius:7px;
+  }
+  .no-print button:hover{ background:#dce8f8; }
+  .no-print .hint{ color:#5a7099; font-size:12px; }
   header{ margin-bottom:14px; }
   h1{ margin:0 0 3px; font-size:22px; }
   header .sub{ color:#666; font-size:12px; }
@@ -745,7 +765,12 @@ function buildBoardHtml(model, dutyPlan) {
 </style>
 </head>
 <body>
-  <div class="no-print">להדפסה או לשמירה כ-PDF: Ctrl+P (מומלץ לרוחב)</div>
+  <div class="no-print">
+    <strong>לשליחה בווטסאפ:</strong>
+    <button type="button" id="btnPng">🖼 שמור כתמונה</button>
+    <button type="button" id="btnPdf">📄 שמור כ-PDF</button>
+    <span class="hint">התמונה נפתחת בווטסאפ בתוך השיחה. ה-PDF נשלח כקובץ מצורף.</span>
+  </div>
   <header>
     <h1>לוח תורנויות שבועי</h1>
     <div class="sub">${esc(school)}${school ? ' · ' : ''}הופק ב-${esc(today)}</div>
@@ -758,6 +783,152 @@ function buildBoardHtml(model, dutyPlan) {
     </table>
   </div>
   <footer>לשאלות ולשינויים — פנו להנהלה.</footer>
+<script>
+/* ציור הלוח לתמונה. מצויר ידנית על קנבס ולא באמצעות המרת HTML —
+   כך התוצאה זהה בכל דפדפן, בלי ספריות חיצוניות ובלי הפתעות בעברית. */
+(function () {
+  var BOARD = ${JSON.stringify(boardData).replace(/</g, '\u003c')};
+
+  var COL = { mgmt:'#e8eee8', girls:'#fce4ee', boys:'#e3f0fc', sub:'#f7f7f7' };
+  var TXT = { mgmt:'#2c4a2c', girls:'#8c1149', boys:'#0d4f8c', sub:'#555555' };
+  var kindOf = function (k) { return k.indexOf('patrol') !== -1 ? 'sub' : k; };
+
+  function draw(scale) {
+    var W_LABEL = 130, W_ZONES = 180, W_DAY = 150, PAD = 8;
+    var HEAD = 34, TITLE = 62, FOOT = 30;
+    var LINE = 17, ZLINE = 14;
+
+    var width = W_LABEL + W_ZONES + BOARD.days.length * W_DAY;
+    var heights = BOARD.rows.map(function (r) {
+      var most = r.cells.reduce(function (m, c) { return Math.max(m, c.length); }, 0);
+      var need = Math.max(most * LINE, r.zones.length * ZLINE, LINE);
+      return need + PAD * 2;
+    });
+    var height = TITLE + HEAD + heights.reduce(function (a, b) { return a + b; }, 0) + FOOT;
+
+    var cv = document.createElement('canvas');
+    cv.width = width * scale;
+    cv.height = height * scale;
+    var g = cv.getContext('2d');
+    g.scale(scale, scale);
+    g.textBaseline = 'top';
+    g.direction = 'rtl';
+    g.textAlign = 'right';
+
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, width, height);
+
+    // טקסט ארוך מוקטן עד שהוא נכנס לעמודה, כדי ששם גיזרה ארוך לא יגלוש
+    // אל התא השכן. יורדים עד 7px ולא מעבר, שהכתב יישאר קריא.
+    function fitText(txt, x, y, maxW, baseFont) {
+      var size = parseFloat(baseFont);
+      var rest = baseFont.slice(String(baseFont).indexOf('px'));
+      g.font = baseFont;
+      while (g.measureText(txt).width > maxW && size > 7) {
+        size -= 0.5;
+        g.font = baseFont.replace(/[\d.]+px/, size + 'px');
+      }
+      g.fillText(txt, x, y);
+      g.font = baseFont;
+      return rest;
+    }
+
+    // כותרת
+    g.fillStyle = '#111111';
+    g.font = 'bold 22px "Segoe UI", Arial, sans-serif';
+    g.fillText(BOARD.title, width - 4, 8);
+    g.fillStyle = '#666666';
+    g.font = '13px "Segoe UI", Arial, sans-serif';
+    g.fillText((BOARD.school ? BOARD.school + ' · ' : '') + 'הופק ב-' + BOARD.date, width - 4, 36);
+
+    var xOf = function (col) {       // col 0 = תווית, 1 = גיזרות, 2.. = ימים
+      if (col === 0) return width - W_LABEL;
+      if (col === 1) return width - W_LABEL - W_ZONES;
+      return width - W_LABEL - W_ZONES - (col - 1) * W_DAY;
+    };
+    var wOf = function (col) { return col === 0 ? W_LABEL : col === 1 ? W_ZONES : W_DAY; };
+
+    function box(x, y, w, h, fill) {
+      if (fill) { g.fillStyle = fill; g.fillRect(x, y, w, h); }
+      g.strokeStyle = '#999999';
+      g.lineWidth = 1;
+      g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+
+    // כותרות הימים
+    var y = TITLE;
+    box(xOf(0), y, W_LABEL, HEAD, '#3c3c3c');
+    box(xOf(1), y, W_ZONES, HEAD, '#3c3c3c');
+    g.fillStyle = '#ffffff';
+    g.font = '600 13px "Segoe UI", Arial, sans-serif';
+    g.fillText('גיזרות', xOf(1) + W_ZONES - PAD, y + 10);
+    for (var i = 0; i < BOARD.days.length; i++) {
+      var x = xOf(2 + i);
+      box(x, y, W_DAY, HEAD, '#3c3c3c');
+      g.fillStyle = '#ffffff';
+      g.textAlign = 'center';
+      g.fillText(BOARD.days[i], x + W_DAY / 2, y + 10);
+      g.textAlign = 'right';
+    }
+    y += HEAD;
+
+    // שורות
+    BOARD.rows.forEach(function (r, ri) {
+      var h = heights[ri];
+      var k = kindOf(r.kind);
+
+      box(xOf(0), y, W_LABEL, h, COL[k] || '#f0f0f0');
+      g.fillStyle = TXT[k] || '#333333';
+      fitText(r.label, xOf(0) + W_LABEL - PAD, y + PAD, W_LABEL - PAD * 2,
+        '600 12px "Segoe UI", Arial, sans-serif');
+
+      box(xOf(1), y, W_ZONES, h, '#fafafa');
+      g.fillStyle = '#555555';
+      r.zones.forEach(function (z, zi) {
+        fitText(z, xOf(1) + W_ZONES - PAD, y + PAD + zi * ZLINE, W_ZONES - PAD * 2,
+          '10px "Segoe UI", Arial, sans-serif');
+      });
+
+      r.cells.forEach(function (names, ci) {
+        var x = xOf(2 + ci);
+        box(x, y, W_DAY, h, names.length ? '#ffffff' : '#fcfcfc');
+        g.fillStyle = k === 'sub' ? '#444444' : '#111111';
+        var f = (k === 'sub' ? '11px' : '11.5px') + ' "Segoe UI", Arial, sans-serif';
+        names.forEach(function (n, ni) {
+          fitText(n, x + W_DAY - PAD, y + PAD + ni * LINE, W_DAY - PAD * 2, f);
+        });
+      });
+
+      y += h;
+    });
+
+    g.fillStyle = '#777777';
+    g.font = '11px "Segoe UI", Arial, sans-serif';
+    g.fillText('לשאלות ולשינויים — פנו להנהלה.', width - 4, y + 8);
+
+    return cv;
+  }
+
+  document.getElementById('btnPng').addEventListener('click', function () {
+    try {
+      var cv = draw(2);   // רזולוציה כפולה, שהתמונה תהיה חדה גם בטלפון
+      cv.toBlob(function (blob) {
+        if (!blob) { alert('לא הצלחנו ליצור את התמונה. נסו את הכפתור "שמור כ-PDF".'); return; }
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'לוח תורנויות ' + BOARD.date.replace(/[\\/]/g, '.') + '.png';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      }, 'image/png');
+    } catch (e) {
+      alert('לא הצלחנו ליצור את התמונה: ' + e.message);
+    }
+  });
+
+  document.getElementById('btnPdf').addEventListener('click', function () { window.print(); });
+})();
+</script>
 </body>
 </html>`;
 }
