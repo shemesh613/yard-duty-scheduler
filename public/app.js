@@ -536,6 +536,9 @@
     } finally {
       restoring = false;
     }
+    // בזמן השחזור השמירה חסומה, ולכן העבודה נשארה רק בדפדפן והשרת
+    // נשאר ריק. שומרים מיד אחרי, אחרת הלוח למורים לא מוצא מה לבנות.
+    if (fileId || fileData) saveState();
   }
 
   // החזרת ערכי הטופס שנשמרו לתוך טבלת ההגדרות.
@@ -713,6 +716,42 @@
       if (g) overrides.classes[tr.dataset.id] = { gender: g };
     });
     return overrides;
+  }
+
+  // קיבוע הגדרות המורים לשנה: סוג, מתחם, יום חופש ופטור. מרגע השמירה
+  // הן גוברות על הזיהוי האוטומטי בכל העלאה ובכל לוח, ואין צורך לחזור
+  // ולשנות אותן בכל פעם.
+  const saveTeachersBtn = $('saveTeachersBtn');
+  const saveTeachersMsg = $('saveTeachersMsg');
+  if (saveTeachersBtn) {
+    saveTeachersBtn.addEventListener('click', async () => {
+      const teachers = collectOverrides().teachers;
+      const n = Object.keys(teachers).length;
+      const NL = String.fromCharCode(10);
+      if (!confirm('לקבוע את ההגדרות של ' + n + ' אנשי הצוות לשנה?' + NL + NL
+        + 'סוג, מתחם, ימי חופש ופטור מתורנות — כפי שהם בטבלה עכשיו.' + NL
+        + 'מכאן והלאה הם יחולו בכל העלאת קובץ ובכל לוח, גם אם המערכת'
+        + ' מזהה אחרת.')) return;
+      saveTeachersBtn.disabled = true;
+      try {
+        const resp = await send('/api/save-teachers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teachers }),
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || 'שמירה נכשלה');
+        if (saveTeachersMsg) {
+          saveTeachersMsg.textContent = '✓ נקבעו ' + data.saved + ' אנשי צוות';
+          saveTeachersMsg.hidden = false;
+          setTimeout(() => { saveTeachersMsg.hidden = true; }, 4000);
+        }
+      } catch (err) {
+        showError('לא הצלחנו לקבוע את ההגדרות.', (err && err.message) || '');
+      } finally {
+        saveTeachersBtn.disabled = false;
+      }
+    });
   }
 
   // --- שלב 2: חישוב הלוחות ---
@@ -1176,18 +1215,11 @@
     renderCheck();
     saveState();
 
-    if (data.downloadId) {
-      const id = encodeURIComponent(data.downloadId);
-      downloadBtn.href = '/api/download/' + id;
-      downloadBtn.style.display = '';
-      if (teachersBtn) {
-        teachersBtn.href = '/api/teachers-sheet/' + id;
-        teachersBtn.style.display = '';
-      }
-    } else {
-      downloadBtn.style.display = 'none';
-      if (teachersBtn) teachersBtn.style.display = 'none';
-    }
+    // הכפתורים בונים את הקבצים מהנתונים שבדפדפן, ולכן הם זמינים תמיד
+    // שיש לוח על המסך — בלי תלות בקובץ כלשהו בשרת.
+    const haveBoard = assignments.length > 0;
+    downloadBtn.style.display = haveBoard ? '' : 'none';
+    if (teachersBtn) teachersBtn.style.display = haveBoard ? '' : 'none';
 
     show(results);
     updateSteps('results');
@@ -1485,8 +1517,65 @@
       e.preventDefault();
     }
   }
-  if (teachersBtn) teachersBtn.addEventListener('click', exportGuard);
-  if (downloadBtn) downloadBtn.addEventListener('click', exportGuard);
+  // מה שהדפדפן צריך לשלוח כדי שהשרת יבנה את הקבצים.
+  const exportPayload = () => ({
+    assignments, staff, violations, unfilled,
+    inspectData, savedAt: new Date().toISOString(),
+  });
+
+  // הלוח למורים נבנה מהנתונים שבדפדפן, ולא מקובץ שנשמר בשרת. כך הוא
+  // עובד גם אחרי שהשרת עלה מחדש — וזה קרה לה פעמיים.
+  if (teachersBtn) {
+    teachersBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!assignments.length) return;
+      let blocked = false;
+      exportGuard({ preventDefault: () => { blocked = true; } });
+      if (blocked) return;
+      // החלון נפתח מיד, בתוך הלחיצה עצמה, אחרת הדפדפן חוסם אותו.
+      const w = window.open('', '_blank');
+      try {
+        const resp = await send('/api/board-html', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: exportPayload() }),
+        });
+        const html = await resp.text();
+        if (!resp.ok) throw new Error(html.slice(0, 120));
+        if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+      } catch (err) {
+        if (w) w.close();
+        showError('לא הצלחנו להפיק את הלוח למורים.', (err && err.message) || '');
+      }
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!assignments.length) return;
+      let blocked = false;
+      exportGuard({ preventDefault: () => { blocked = true; } });
+      if (blocked) return;
+      try {
+        const resp = await send('/api/board-xlsx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: exportPayload() }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const blob = await resp.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'לוח תורנויות.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      } catch (err) {
+        showError('לא הצלחנו להפיק את קובץ האקסל.', (err && err.message) || '');
+      }
+    });
+  }
 
   // קיצור מראש מסך התוצאות אל הרשימה השמית.
   const toCheckBtn = $('toCheckBtn');

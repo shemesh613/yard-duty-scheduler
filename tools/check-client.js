@@ -188,6 +188,35 @@ run(async (stop) => {
       }
     }
 
+    // שומרים את הלוח כמו שהממשק עושה, ורק אז בודקים את דף הצפייה —
+    // בלי לוח שמור הוא אמור להחזיר 404, וזו התנהגות נכונה.
+    await fetch(base + '/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: {
+        fileId: runRes.fileId, fileName: 'check.xlsx',
+        inspectData: { meta: insp.meta, teachers: insp.teachers, classes: insp.classes },
+        assignments: runRes.assignments, staff: runRes.staff,
+        violations: runRes.violations, unfilled: runRes.unfilled,
+        downloadId: runRes.downloadId, savedAt: new Date().toISOString(),
+      } }),
+    });
+
+    // בניית הקבצים מנתונים שנשלחים מהדפדפן — חייבת לעבוד גם בלי קובץ בשרת
+    for (const [label, url] of [['לוח למורים מנתוני הדפדפן', '/api/board-html'],
+      ['אקסל מנתוני הדפדפן', '/api/board-xlsx']]) {
+      const r = await fetch(base + url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: {
+          assignments: runRes.assignments, staff: runRes.staff,
+          inspectData: { meta: insp.meta, teachers: insp.teachers, classes: insp.classes },
+        } }),
+      });
+      if (!r.ok) problems.push(`${label} החזיר ${r.status}`);
+    }
+    notes.push('הלוח למורים והאקסל נבנים מנתוני הדפדפן, בלי תלות בשרת');
+
     // צפייה בלבד וייצוא
     for (const [label, url] of [['‎/view', '/view'], ['‎/api/board', '/api/board'],
       ['לוח למורים', '/api/teachers-sheet/' + runRes.downloadId],

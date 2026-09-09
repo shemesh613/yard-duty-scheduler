@@ -305,6 +305,50 @@ app.delete('/api/state', requireEditKey, (req, res) => {
   return res.json({ ok: true });
 });
 
+/* POST /api/save-teachers — קיבוע הגדרות המורים לשנה.
+   נכתב ל-config/overrides.json, ומשם ההגדרות גוברות על כל זיהוי
+   אוטומטי בכל העלאה ובכל לוח מכאן והלאה. זו בקשת ההנהלה: מה ששונה
+   פעם אחת בהגדרות לא צריך לחזור ולהשתנות. */
+app.post('/api/save-teachers', requireEditKey, express.json({ limit: '2mb' }), (req, res) => {
+  try {
+    const incoming = (req.body && req.body.teachers) || {};
+    const TYPES = ['מחנכת', 'מורה מקצועי', 'תומכת למידה', 'מורה משלימה תקשורת',
+      'הנהלה', 'חוגים', 'מ"מ'];
+    const DAYS = ['יום א', 'יום ב', 'יום ג', 'יום ד', 'יום ה', 'יום ו'];
+    const GENDERS = ['בנים', 'בנות', 'גמיש'];
+
+    const p2 = path.join(__dirname, 'config', 'overrides.json');
+    let current = {};
+    try { current = JSON.parse(fs.readFileSync(p2, 'utf8')); } catch (_) { /* קובץ חדש */ }
+    const teachers = current.teachers || (current.teachers = {});
+
+    let saved = 0;
+    for (const [name, raw] of Object.entries(incoming)) {
+      const key = String(name || '').trim();
+      if (!key || !raw || typeof raw !== 'object') continue;
+      // מיזוג ולא דריסה: שדות שנקבעו בעבר ואינם נשלחים עכשיו נשמרים.
+      const cur = teachers[key] || {};
+      const next = Object.assign({}, cur);
+      if (TYPES.indexOf(raw.type) !== -1) next.type = raw.type;
+      if (GENDERS.indexOf(raw.genderArea) !== -1) next.genderArea = raw.genderArea;
+      else if (raw.genderArea === '') delete next.genderArea;
+      if (typeof raw.noDuty === 'boolean') next.noDuty = raw.noDuty;
+      if (Array.isArray(raw.daysOff)) {
+        next.daysOff = raw.daysOff.filter((d) => DAYS.indexOf(d) !== -1);
+      }
+      teachers[key] = next;
+      saved++;
+    }
+
+    current._updated = new Date().toISOString().slice(0, 10);
+    fs.writeFileSync(p2, JSON.stringify(current, null, 2) + String.fromCharCode(10), 'utf8');
+    return res.json({ ok: true, saved });
+  } catch (err) {
+    console.error('שגיאה בשמירת הגדרות המורים:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ ok: false, error: 'לא הצלחנו לשמור את ההגדרות.' });
+  }
+});
+
 // POST /api/save-classes — שמירת מגדר הכיתות לשנה הנוכחית.
 // נכתב ל-config/classes.json ומשם גובר על כל זיהוי אוטומטי בהעלאות הבאות.
 app.post('/api/save-classes', requireEditKey, express.json({ limit: '256kb' }), (req, res) => {
@@ -459,6 +503,44 @@ function dutyPlanFromState(st) {
 
 const NO_BOARD = 'עדיין אין לוח שמור. היכנסו למערכת, ואם מוצע "שחזר" — לחצו עליו. '
   + 'לאחר מכן הקובץ ייווצר שוב.';
+
+/* הלוח למורים והאקסל נבנים מהנתונים שהדפדפן שולח, ולא מקובץ שנשמר
+   בשרת ולא מהמצב השמור בו. כך הם עובדים גם אחרי שהשרת עלה מחדש
+   ומחק הכול — הדפדפן של ההנהלה תמיד מחזיק את הלוח המלא.
+   שני המסלולים אינם כותבים דבר; הם מקבלים נתונים ומחזירים קובץ. */
+
+app.post('/api/board-html', express.json({ limit: '8mb' }), (req, res) => {
+  const st = (req.body && req.body.state) || {};
+  if (!Array.isArray(st.assignments) || !st.assignments.length) {
+    return res.status(400).type('text/plain; charset=utf-8').send('לא התקבל לוח לבנייה.');
+  }
+  try {
+    const report = require('./src/engine/report.js');
+    res.set('Cache-Control', 'no-store');
+    return res.type('html').send(
+      report.buildBoardHtml(modelFromState(st), { assignments: st.assignments }));
+  } catch (err) {
+    console.error('בניית הלוח למורים נכשלה:', err && err.stack ? err.stack : err);
+    return res.status(500).type('text/plain; charset=utf-8').send('שגיאה בבניית הלוח.');
+  }
+});
+
+app.post('/api/board-xlsx', express.json({ limit: '8mb' }), (req, res) => {
+  const st = (req.body && req.body.state) || {};
+  if (!Array.isArray(st.assignments) || !st.assignments.length) {
+    return res.status(400).type('text/plain; charset=utf-8').send('לא התקבל לוח לבנייה.');
+  }
+  try {
+    const report = require('./src/engine/report.js');
+    const buf = report.buildWorkbook(modelFromState(st), null, dutyPlanFromState(st));
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.set('Content-Disposition', 'attachment; filename="duties.xlsx"');
+    return res.send(buf);
+  } catch (err) {
+    console.error('בניית האקסל נכשלה:', err && err.stack ? err.stack : err);
+    return res.status(500).type('text/plain; charset=utf-8').send('שגיאה בבניית האקסל.');
+  }
+});
 
 // GET /api/download/:id → הורדת קובץ האקסל מ-output/
 app.get('/api/download/:id', (req, res) => {
