@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { renderDecisions } = require('./src/decisions-page.js');
+const remoteStore = require('./src/remote-store.js');
 
 // טעינת המנוע נעשית בעצלתיים (lazy): ייתכן שמודולי מנוע (למשל duty.js)
 // עדיין נבנים ע"י סוכנים אחרים. אם הטעינה נכשלת — השרת עדיין עולה,
@@ -291,7 +292,9 @@ app.post('/api/state', requireEditKey, express.json({ limit: '8mb' }), (req, res
     const state = (req.body && req.body.state) || null;
     if (!state) return res.status(400).json({ ok: false, error: 'לא התקבל מצב לשמירה.' });
     state.savedAt = new Date().toISOString();
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state), 'utf8');
+    const text = JSON.stringify(state);
+    fs.writeFileSync(STATE_FILE, text, 'utf8');
+    remoteStore.push(text);
     return res.json({ ok: true, savedAt: state.savedAt });
   } catch (err) {
     console.error('שגיאה בשמירת המצב:', err && err.stack ? err.stack : err);
@@ -302,6 +305,7 @@ app.post('/api/state', requireEditKey, express.json({ limit: '8mb' }), (req, res
 // DELETE /api/state → מחיקת המצב השמור
 app.delete('/api/state', requireEditKey, (req, res) => {
   try { fs.unlinkSync(STATE_FILE); } catch (_) { /* לא קיים */ }
+  remoteStore.remove();
   return res.json({ ok: true });
 });
 
@@ -589,8 +593,21 @@ app.get('/api/teachers-sheet/:id', (req, res) => {
   res.type('html').send(fs.readFileSync(filePath, 'utf8'));
 });
 
-app.listen(PORT, () => {
-  console.log(`השרת רץ על http://localhost:${PORT}`);
+// אחרי עלייה מחדש הדיסק ריק: טוענים את הלוח האחרון מ-GitHub לפני שמקבלים בקשות.
+async function restoreState() {
+  if (!remoteStore.enabled() || fs.existsSync(STATE_FILE)) return;
+  try {
+    const text = await remoteStore.pull();
+    if (text) { fs.writeFileSync(STATE_FILE, text, 'utf8'); console.log('הלוח שוחזר מ-GitHub'); }
+  } catch (err) { console.error('שחזור הלוח מ-GitHub נכשל:', err && err.message || err); }
+}
+
+app.get('/api/backup-status', (req, res) => res.json(remoteStore.status()));
+
+restoreState().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`השרת רץ על http://localhost:${PORT}`);
+  });
 });
 
 module.exports = app;
