@@ -57,6 +57,9 @@
   const statsEl = $('stats');
   const downloadBtn = $('downloadBtn');
   const teachersBtn = $('teachersBtn');
+  const publishBtn = $('publishBtn');
+  const publishStatus = $('publishStatus');
+  let publishedMeta = null;   // מה שהשרת יודע על הלוח שהמורים רואים
 
   const saveClassesBtn = $('saveClassesBtn');
   const saveClassesMsg = $('saveClassesMsg');
@@ -1220,6 +1223,7 @@
     const haveBoard = assignments.length > 0;
     downloadBtn.style.display = haveBoard ? '' : 'none';
     if (teachersBtn) teachersBtn.style.display = haveBoard ? '' : 'none';
+    updatePublishUI();
 
     show(results);
     updateSteps('results');
@@ -1517,6 +1521,66 @@
       e.preventDefault();
     }
   }
+  /* ---- פרסום הלוח למורים ----
+     הטיוטה נשמרת מעצמה, אבל הלוח ש-/view מציג משתנה רק בלחיצה על "פרסם". */
+  function sigOf() {
+    const s = JSON.stringify(assignments);
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return h + ':' + s.length;
+  }
+  function updatePublishUI() {
+    if (!publishBtn || !publishStatus) return;
+    const have = assignments.length > 0;
+    publishBtn.disabled = !have;
+    publishStatus.className = 'publish-status';
+    if (!have || !publishedMeta) { publishStatus.textContent = ''; return; }
+    if (!publishedMeta.published) {
+      publishStatus.textContent = 'עדיין לא פורסם. המורים רואים כרגע את הלוח האחרון שנשמר.';
+      publishStatus.classList.add('warn');
+      return;
+    }
+    const when = publishedMeta.publishedAt ? new Date(publishedMeta.publishedAt).toLocaleString('he-IL') : '';
+    if (publishedMeta.sig === sigOf()) {
+      publishStatus.textContent = '✓ המורים רואים את הלוח הזה (פורסם ב-' + when + ')';
+      publishStatus.classList.add('ok');
+    } else {
+      publishStatus.textContent = '⚠ יש שינויים שטרם פורסמו. המורים רואים את הלוח מ-' + when;
+      publishStatus.classList.add('warn');
+    }
+  }
+  async function loadPublishStatus() {
+    try { publishedMeta = await (await fetch('/api/publish-status')).json(); } catch (_) { /* ללא חיווי */ }
+    updatePublishUI();
+  }
+  loadPublishStatus();
+  if (publishBtn) {
+    publishBtn.addEventListener('click', async () => {
+      if (!assignments.length) return;
+      let blocked = false;
+      exportGuard({ preventDefault: () => { blocked = true; } });
+      if (blocked) return;
+      if (!confirm('לפרסם את הלוח למורים?' + String.fromCharCode(10)
+        + 'מי שפותח את הקישור בדף הנחיתה יראה אותו מיד.')) return;
+      publishBtn.disabled = true;
+      try {
+        const st = currentState();
+        st.savedAt = new Date().toISOString();
+        const resp = await send('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: st, sig: sigOf() }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'התשובה מהשרת לא תקינה');
+        publishedMeta = { published: true, publishedAt: data.publishedAt, sig: data.sig };
+      } catch (err) {
+        showError('הלוח לא פורסם.', (err && err.message) || '');
+      }
+      updatePublishUI();
+    });
+  }
+
   // מה שהדפדפן צריך לשלוח כדי שהשרת יבנה את הקבצים.
   const exportPayload = () => ({
     assignments, staff, violations, unfilled,

@@ -275,6 +275,8 @@ app.post('/api/inspect', requireEditKey, upload.single('file'), (req, res) => {
 // הלוח וההגדרות נשמרים בשרת, כדי שיציאה מהאתר לא תמחק את העבודה.
 // מצב אחד משותף — בית ספר אחד, מי שעורך רואה את מה שנשמר לאחרונה.
 const STATE_FILE = path.join(OUTPUT_DIR, 'state.json');
+// הלוח שהמורים רואים. נפרד מהטיוטה: משתנה רק כשההנהלה לוחצת "פרסם למורים".
+const PUBLISHED_FILE = path.join(OUTPUT_DIR, 'published.json');
 
 // GET /api/state → המצב השמור, או null אם אין
 app.get('/api/state', (req, res) => {
@@ -294,7 +296,7 @@ app.post('/api/state', requireEditKey, express.json({ limit: '8mb' }), (req, res
     state.savedAt = new Date().toISOString();
     const text = JSON.stringify(state);
     fs.writeFileSync(STATE_FILE, text, 'utf8');
-    remoteStore.push(text);
+    remoteStore.push('state.json', text);
     return res.json({ ok: true, savedAt: state.savedAt });
   } catch (err) {
     console.error('שגיאה בשמירת המצב:', err && err.stack ? err.stack : err);
@@ -305,7 +307,7 @@ app.post('/api/state', requireEditKey, express.json({ limit: '8mb' }), (req, res
 // DELETE /api/state → מחיקת המצב השמור
 app.delete('/api/state', requireEditKey, (req, res) => {
   try { fs.unlinkSync(STATE_FILE); } catch (_) { /* לא קיים */ }
-  remoteStore.remove();
+  remoteStore.remove('state.json');
   return res.json({ ok: true });
 });
 
@@ -399,6 +401,43 @@ function readSavedState() {
   try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (_) { return null; }
 }
 
+// הלוח שמוצג למורים ב-/view וב-/api/board. כל עוד לא פורסם לוח מעולם
+// משתמשים בטיוטה, כדי שהקישור הקיים ימשיך לעבוד עד הפרסום הראשון.
+function readPublishedState() {
+  try { return JSON.parse(fs.readFileSync(PUBLISHED_FILE, 'utf8')); } catch (_) { /* לא פורסם */ }
+  return readSavedState();
+}
+
+// GET /api/publish-status → מתי פורסם לאחרונה, ובאיזו חתימה (להשוואה לטיוטה).
+app.get('/api/publish-status', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const p = JSON.parse(fs.readFileSync(PUBLISHED_FILE, 'utf8'));
+    return res.json({ ok: true, published: true, publishedAt: p.publishedAt || null, sig: p.sig || null });
+  } catch (_) {
+    return res.json({ ok: true, published: false, publishedAt: null, sig: null });
+  }
+});
+
+// POST /api/publish → הלוח שנשלח הופך ללוח שהמורים רואים.
+app.post('/api/publish', requireEditKey, express.json({ limit: '8mb' }), (req, res) => {
+  try {
+    const st = req.body && req.body.state;
+    if (!st || !Array.isArray(st.assignments) || !st.assignments.length) {
+      return res.status(400).json({ ok: false, error: 'אין לוח לפרסום.' });
+    }
+    st.publishedAt = new Date().toISOString();
+    st.sig = String(req.body.sig || '');
+    const text = JSON.stringify(st);
+    fs.writeFileSync(PUBLISHED_FILE, text, 'utf8');
+    remoteStore.push('published.json', text);
+    return res.json({ ok: true, publishedAt: st.publishedAt, sig: st.sig });
+  } catch (err) {
+    console.error('שגיאה בפרסום:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ ok: false, error: 'לא הצלחנו לפרסם.' });
+  }
+});
+
 // המודל המצומצם שדרוש לבניית הלוח, מתוך המצב השמור.
 function modelFromState(st) {
   const insp = (st && st.inspectData) || {};
@@ -412,7 +451,7 @@ function modelFromState(st) {
 // GET /view — דף צפייה בלבד בלוח האחרון. אותו עיצוב כמו "לוח למורים",
 // כולל הכפתורים לשמירה כתמונה או כ-PDF.
 app.get('/view', (req, res) => {
-  const st = readSavedState();
+  const st = readPublishedState();
   if (!st || !Array.isArray(st.assignments) || !st.assignments.length) {
     return res.status(404).type('html').send(
       '<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">'
@@ -425,7 +464,7 @@ app.get('/view', (req, res) => {
   try {
     const report = require('./src/engine/report.js');
     const html = report.buildBoardHtml(modelFromState(st), { assignments: st.assignments });
-    const when = st.savedAt ? new Date(st.savedAt).toLocaleString('he-IL') : '';
+    const when = (st.publishedAt || st.savedAt) ? new Date(st.publishedAt || st.savedAt).toLocaleString('he-IL') : '';
     // באנר קבוע שמבהיר שזו צפייה בלבד, ומתי הלוח עודכן לאחרונה.
     const banner = '<div class="no-print" style="background:#eefbf0;border-color:#b6e3c1;'
       + 'color:#1d5b32"><strong>צפייה בלבד</strong>'
@@ -445,7 +484,7 @@ app.get('/view', (req, res) => {
 app.get('/api/board', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'no-store');
-  const st = readSavedState();
+  const st = readPublishedState();
   if (!st || !Array.isArray(st.assignments)) {
     return res.json({ ok: true, published: false, board: null, assignments: [] });
   }
@@ -465,7 +504,7 @@ app.get('/api/board', (req, res) => {
     return res.json({
       ok: true,
       published: true,
-      savedAt: st.savedAt || null,
+      savedAt: st.publishedAt || st.savedAt || null,
       school: board.school,
       source: st.fileName || null,
       days: board.days,
@@ -595,11 +634,14 @@ app.get('/api/teachers-sheet/:id', (req, res) => {
 
 // אחרי עלייה מחדש הדיסק ריק: טוענים את הלוח האחרון מ-GitHub לפני שמקבלים בקשות.
 async function restoreState() {
-  if (!remoteStore.enabled() || fs.existsSync(STATE_FILE)) return;
-  try {
-    const text = await remoteStore.pull();
-    if (text) { fs.writeFileSync(STATE_FILE, text, 'utf8'); console.log('הלוח שוחזר מ-GitHub'); }
-  } catch (err) { console.error('שחזור הלוח מ-GitHub נכשל:', err && err.message || err); }
+  if (!remoteStore.enabled()) return;
+  for (const [file, target] of [['state.json', STATE_FILE], ['published.json', PUBLISHED_FILE]]) {
+    if (fs.existsSync(target)) continue;
+    try {
+      const text = await remoteStore.pull(file);
+      if (text) { fs.writeFileSync(target, text, 'utf8'); console.log('שוחזר מ-GitHub: ' + file); }
+    } catch (err) { console.error('שחזור ' + file + ' מ-GitHub נכשל:', err && err.message || err); }
+  }
 }
 
 app.get('/api/backup-status', (req, res) => res.json(remoteStore.status()));

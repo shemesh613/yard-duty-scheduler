@@ -4,7 +4,6 @@
 const TOKEN = process.env.GITHUB_TOKEN || '';
 const REPO = process.env.GITHUB_REPO || 'shemesh613/yard-duty-scheduler';
 const BRANCH = process.env.BOARD_BRANCH || 'board-data';
-const FILE = 'state.json';
 const API = 'https://api.github.com/repos/' + REPO;
 
 const enabled = () => !!TOKEN;
@@ -39,44 +38,44 @@ async function ensureBranch() {
   if (!c.ok) throw new Error('יצירת הענף נכשלה: ' + c.status);
 }
 
-async function currentSha() {
-  const r = await gh('GET', '/contents/' + FILE + '?ref=' + BRANCH);
+async function currentSha(file) {
+  const r = await gh('GET', '/contents/' + file + '?ref=' + BRANCH);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error('קריאת הקובץ נכשלה: ' + r.status);
   return (await r.json()).sha;
 }
 
 // מחזיר את הטקסט השמור, או null אם אין.
-async function pull() {
+async function pull(file) {
   if (!enabled()) return null;
-  const r = await gh('GET', '/contents/' + FILE + '?ref=' + BRANCH, null, 'application/vnd.github.raw+json');
+  const r = await gh('GET', '/contents/' + file + '?ref=' + BRANCH, null, 'application/vnd.github.raw+json');
   if (r.status === 404) return null;
   if (!r.ok) throw new Error('טעינה מ-GitHub נכשלה: ' + r.status);
   return await r.text();
 }
 
-async function put(text) {
+async function put(file, text) {
   await ensureBranch();
   const body = {
-    message: 'שמירת לוח',
+    message: 'שמירת ' + file,
     content: Buffer.from(text, 'utf8').toString('base64'),
     branch: BRANCH
   };
-  const sha = await currentSha();
+  const sha = await currentSha(file);
   if (sha) body.sha = sha;
-  const r = await gh('PUT', '/contents/' + FILE, body);
+  const r = await gh('PUT', '/contents/' + file, body);
   if (!r.ok) throw new Error('שמירה ל-GitHub נכשלה: ' + r.status);
 }
 
-async function del() {
-  const sha = await currentSha();
+async function del(file) {
+  const sha = await currentSha(file);
   if (!sha) return;
-  const r = await gh('DELETE', '/contents/' + FILE, { message: 'מחיקת לוח', sha, branch: BRANCH });
+  const r = await gh('DELETE', '/contents/' + file, { message: 'מחיקת ' + file, sha, branch: BRANCH });
   if (!r.ok) throw new Error('מחיקה מ-GitHub נכשלה: ' + r.status);
 }
 
-// תור: פעולה אחת בכל רגע, ושמירות שהצטברו בינתיים מתאחדות לאחרונה שבהן.
-let pending = null;   // { text } או { remove: true }
+// תור: פעולה אחת בכל רגע, ושמירות שהצטברו בינתיים לאותו קובץ מתאחדות לאחרונה.
+const pending = new Map();   // שם קובץ -> { text } או { remove: true }
 let running = false;
 let lastError = null;
 
@@ -84,11 +83,11 @@ async function drain() {
   if (running) return;
   running = true;
   try {
-    while (pending) {
-      const job = pending;
-      pending = null;
+    while (pending.size) {
+      const [file, job] = pending.entries().next().value;
+      pending.delete(file);
       try {
-        if (job.remove) await del(); else await put(job.text);
+        if (job.remove) await del(file); else await put(file, job.text);
         lastError = null;
       } catch (err) {
         lastError = String(err && err.message || err);
@@ -98,8 +97,8 @@ async function drain() {
   } finally { running = false; }
 }
 
-function push(text) { if (enabled()) { pending = { text }; drain(); } }
-function remove() { if (enabled()) { pending = { remove: true }; drain(); } }
+function push(file, text) { if (enabled()) { pending.set(file, { text }); drain(); } }
+function remove(file) { if (enabled()) { pending.set(file, { remove: true }); drain(); } }
 function status() { return { enabled: enabled(), repo: REPO, branch: BRANCH, lastError }; }
 
 module.exports = { enabled, pull, push, remove, status };
