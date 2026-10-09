@@ -92,7 +92,16 @@ function run(cb) {
     cwd: ROOT, env: Object.assign({}, process.env, { PORT: '3999' }), stdio: 'ignore',
   });
   const stop = () => { try { server.kill(); } catch (_) {} };
-  setTimeout(() => cb(stop), 2500);
+  // מחכים עד שהשרת באמת מאזין (עד 15 שניות), ולא פרק זמן קבוע שתלוי בעומס על המחשב.
+  const started = Date.now();
+  const poll = () => {
+    const r = http.get('http://127.0.0.1:3999/', (x) => { x.resume(); cb(stop); });
+    r.on('error', () => {
+      if (Date.now() - started > 15000) cb(stop);
+      else setTimeout(poll, 200);
+    });
+  };
+  setTimeout(poll, 300);
 }
 
 run(async (stop) => {

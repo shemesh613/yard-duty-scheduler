@@ -485,6 +485,18 @@ function assignDuties(model, rules, options = {}) {
   //          והמערכת תמצא תורן אחר לעמדה שהתפנתה.
   // pinned:  תורנויות שכבר נקבעו ויש לשמר אותן — כדי שהסרה בודדת
   //          לא תערבב את כל הלוח.
+  // preferred: הלוח הקודם. אינו מחייב — רק מעדיף אותו מורה באותה עמדה,
+  // כדי שלוח חדש יהיה דומה ככל האפשר לקודם. כללי הזכאות עדיין חלים.
+  const prefExact = new Set();
+  const prefLoose = new Set();
+  for (const p of options.preferred || []) {
+    if (!p || !p.teacher) continue;
+    prefExact.add(p.teacher + '|' + p.day + '|' + p.break + '|' + (p.role || ''));
+    prefLoose.add(p.teacher + '|' + p.day + '|' + p.break);
+  }
+  r._prefExact = prefExact;
+  r._prefLoose = prefLoose;
+
   const blockedSet = new Set(
     (options.blocked || []).map(b => (b.teacher || '') + '|' + (b.day || '') + '|' + (b.break || ''))
   );
@@ -527,6 +539,9 @@ function assignDuties(model, rules, options = {}) {
     if (!p.manual && blockedSet.has(p.teacher + '|' + p.day + '|' + p.break)) continue;
     const t = teachers.find(x => x.name === p.teacher);
     if (!t) continue;
+    // שיבוץ אוטומטי קיים של מי שהוגדר מאז כפטור או כחופשי ביום הזה לא נשמר:
+    // העמדה תתמלא מחדש. שיבוץ שנקבע ידנית נשאר — זו הוראה מפורשת.
+    if (!p.manual && (t.noDuty || t.type === 'חוגים' || isDayOff(t, p.day))) continue;
     const st = state.get(t.id);
     if (st.assignedSlots.has(p.day + '|' + p.break)) continue;
     // שתי עמדות באותה הפסקה עם אותו תפקיד ובלי גיזרה (שתי עמדות מ"מ)
@@ -725,13 +740,16 @@ function assignDuties(model, rules, options = {}) {
   function candidatesFor(slot) {
     const out = [];
     for (const t of teachers) {
-      if (t.noDuty || t.type === 'חוגים') continue;
-      if (isDayOff(t, slot.day)) continue;
-      if (!worksOnDay(t, slot.day)) continue;
-
       let why = null;
+      // מי שבדרך כלל אינו עושה תורנות או אינו בבית הספר ביום הזה מוצג בכל זאת,
+      // עם הסבר — ההנהלה יכולה להחליט לשבץ אותו בכל זאת.
+      let absent = false;
       const st = state.get(t.id);
-      if (st.assignedSlots.has(slot.day + '|' + slot.break)) why = 'כבר משובץ באותה הפסקה';
+      if (t.noDuty) { why = 'מוגדר פטור מתורנות — בדרך כלל אינו עושה תורנות'; absent = true; }
+      else if (t.type === 'חוגים') { why = 'מורה חוגים — בדרך כלל ללא תורנות'; absent = true; }
+      else if (isDayOff(t, slot.day)) { why = 'יום חופש שלו — בדרך כלל אינו בבית הספר ביום זה'; absent = true; }
+      else if (!worksOnDay(t, slot.day)) { why = 'לא עובד ביום זה — בדרך כלל אינו בבית הספר'; absent = true; }
+      else if (st.assignedSlots.has(slot.day + '|' + slot.break)) why = 'כבר משובץ באותה הפסקה';
       else if (slot.mgmt && !allowedOnMgmtSlot(t, slot)) why = 'עמדת ' + slot.role + ' שמורה לצוות ההנהלה';
       else if (r.oneDutyPerDay && (st.perDay[slot.day] || 0) > 0) why = 'כבר יש לו תורנות באותו יום';
       else if (isExcluded(t, slot, r)) why = 'כלל שיבוץ אוסר עליו תפקיד זה';
@@ -754,10 +772,12 @@ function assignDuties(model, rules, options = {}) {
         duties: st.total,
         reason: why,          // null = פנוי לשיבוץ
         soft: !!why && isSoft(why),
+        absent,               // לא עובד ביום זה / פטור — מוצג אחרון, עם הסבר
       });
     }
-    // קודם הפנויים, אחריהם מי שרק חרג ממכסתו, ולבסוף מי שכלל מפורש חוסם.
-    const rank = (c) => (!c.reason ? 0 : (c.soft ? 1 : 2));
+    // קודם הפנויים, אחריהם מי שרק חרג ממכסתו, אחריהם מי שכלל מפורש חוסם,
+    // ולבסוף מי שבדרך כלל לא נמצא או לא עושה תורנות.
+    const rank = (c) => (c.absent ? 3 : (!c.reason ? 0 : (c.soft ? 1 : 2)));
     out.sort((a, b) => rank(a) - rank(b) || a.duties - b.duties);
     return out;
   }
@@ -1305,7 +1325,14 @@ function candidateCost(t, slot, state, r, locations) {
   // ובלי זה הוא מפסיד כל תחרות ונשאר בלי תורנויות.
   cost += availableDayCount(t, r) * 12;
 
-  // (9) שובר שוויון יציב לפי id.
+  // (9) העדפה ללוח הקודם — אותו מורה באותה הפסקה (ובאותו תפקיד).
+  if (r._prefExact) {
+    const k = t.name + '|' + slot.day + '|' + slot.break;
+    if (r._prefExact.has(k + '|' + slot.role)) cost -= 250;
+    else if (r._prefLoose.has(k)) cost -= 120;
+  }
+
+  // (10) שובר שוויון יציב לפי id.
   cost += idTiebreak(t.id) * 0.001;
 
   return cost;

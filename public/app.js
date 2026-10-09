@@ -59,6 +59,10 @@
   const teachersBtn = $('teachersBtn');
   const publishBtn = $('publishBtn');
   const publishStatus = $('publishStatus');
+  const applyKeepBtn = $('applyKeepBtn');
+  const replaceFileBtn = $('replaceFileBtn');
+  const replaceFileInput = $('replaceFileInput');
+  let prefSnapshot = null;    // הלוח שהיה לפני "חשב לוחות" — לוח חדש ייבנה דומה לו
   let publishedMeta = null;   // מה שהשרת יודע על הלוח שהמורים רואים
 
   const saveClassesBtn = $('saveClassesBtn');
@@ -389,6 +393,7 @@
     if (step === 'upload') show(uploadSection);
     else if (step === 'settings') show(settingsSection);
     else show(results);
+    syncKeepBtn();
     updateSteps(step);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -760,9 +765,49 @@
   // --- שלב 2: חישוב הלוחות ---
   let keepScroll = null;
 
+  // הלוח שלוח חדש צריך להידמות לו: מה שהיה על המסך, ואם אין — הלוח שפורסם.
+  async function preferredBoard() {
+    const snap = prefSnapshot;
+    prefSnapshot = null;
+    if (snap && snap.length) return snap;
+    if (assignments.length) {
+      return assignments.map((a) => ({
+        teacher: a.teacherName, day: a.day, break: a.break, role: a.role, area: a.area,
+      }));
+    }
+    try {
+      const j = await (await fetch('/api/board')).json();
+      if (j && j.published && Array.isArray(j.assignments)) {
+        return j.assignments.map((a) => ({
+          teacher: a.teacher, day: a.day, break: a.break, role: a.role, area: a.area,
+        }));
+      }
+    } catch (_) { /* בלי העדפה */ }
+    return [];
+  }
+
+  // אחרי שינוי הגדרות או החלפת קובץ: אילו שיבוצים נעלמו מהלוח, ולמה.
+  function reportLost(before) {
+    const keyOf = (a) => a.teacherName + '|' + a.day + '|' + a.break;
+    const now = new Set(assignments.map(keyOf));
+    const lost = before.filter((a) => !now.has(keyOf(a)));
+    if (!lost.length) return;
+    const NL = String.fromCharCode(10);
+    const lines = lost.slice(0, 12).map((a) =>
+      '• ' + a.teacherName + ' — ' + (DAYF[a.day] || a.day) + ', ' + (BRK[a.break] || a.break));
+    alert('הלוח נשמר, אבל ' + lost.length + ' שיבוצים כבר לא מתאימים להגדרות / לקובץ החדש'
+      + ' (פטור, יום חופש, או שהמורה כבר לא בקובץ) והוסרו:' + NL + NL
+      + lines.join(NL) + (lost.length > 12 ? NL + '…ועוד ' + (lost.length - 12) : '') + NL + NL
+      + 'העמדות שהתפנו מולאו מחדש, ומה שלא ניתן היה למלא מופיע ב"עמדות שלא אוישו".');
+  }
+
+  function syncKeepBtn() { if (applyKeepBtn) applyKeepBtn.hidden = !assignments.length; }
+
   // חישוב הלוח. keepRest=true משמר את שאר השיבוצים ומחליף רק את מה שהוסר.
-  async function computePlan(keepRest) {
-    if (!selectedFile && !fileId) return;
+  // opts.noPrefer: חלוקה מחדש שמטרתה פיזור שונה — בלי להעדיף את הלוח הקודם.
+  // מחזיר true אם החישוב הצליח.
+  async function computePlan(keepRest, opts) {
+    if (!selectedFile && !fileId) return false;
     // עדכון אחרי שינוי ידני — לא מציגים מחוון טעינה על כל המסך ולא גוללים.
     freshRun = !keepRest;
     if (keepRest) {
@@ -778,6 +823,7 @@
       overrides.blocked = removed;
       overrides.extraTeachers = extraTeachers;
       overrides.removedTeachers = removedTeachers;
+      if (!keepRest && !(opts && opts.noPrefer)) overrides.preferred = await preferredBoard();
       if (keepRest) {
         const isRemoved = (a) => removed.some((b) =>
           b.teacher === a.teacherName && b.day === a.day && b.break === a.break);
@@ -819,10 +865,11 @@
       hide(loading);
       if (!data.ok) {
         showError(data.error || 'אירעה שגיאה בעיבוד הקובץ.', data.detail || '');
-        return;
+        return false;
       }
       renderResults(data);
       if (keepRest) flashSaved();
+      return true;
     } catch (err) {
       hide(loading);
       const msg = (err && err.message) || String(err);
@@ -834,6 +881,7 @@
                 : 'הלוח חושב, אך אירעה תקלה בהצגתו.',
         msg
       );
+      return false;
     } finally {
       runBtn.disabled = false;
       if (redistributeBtn) redistributeBtn.disabled = false;
@@ -848,6 +896,9 @@
         + 'יש ' + manual + ' שינויים ידניים בלוח — החלפות והסרות.' + NL
         + 'חישוב מחדש ימחק אותם והלוח ייבנה מאפס.')) return;
     }
+    prefSnapshot = assignments.map((a) => ({
+      teacher: a.teacherName, day: a.day, break: a.break, role: a.role, area: a.area,
+    }));
     removed = [];
     manualPins = [];
     assignments = [];
@@ -865,6 +916,70 @@
     });
   }
 
+  // החלת ההגדרות על הלוח הקיים: כל השיבוצים והשינויים הידניים נשארים,
+  // ורק מה שהשתנה בגלל ההגדרות (פטור, יום חופש) מתעדכן. בלי חישוב מאפס.
+  if (applyKeepBtn) {
+    applyKeepBtn.addEventListener('click', async () => {
+      if (!assignments.length) return;
+      const before = assignments.map((a) => Object.assign({}, a));
+      applyKeepBtn.disabled = true;
+      const ok = await computePlan(true);
+      applyKeepBtn.disabled = false;
+      if (ok) { hide(settingsSection); reportLost(before); }
+    });
+  }
+
+  // החלפת קובץ האקסל באמצע העבודה. השינויים הידניים וההגדרות שנקבעו נשמרים;
+  // מורים חדשים נכנסים עם ההגדרות שהוסקו להם, ושיבוצים שאינם מתאימים עוד נושרים.
+  function applySettingsBack(old) {
+    $('teachersTable').querySelectorAll('tbody tr').forEach((tr) => {
+      const o = old[tr.dataset.name];
+      if (!o) return;
+      if (o.type) tr.querySelector('.f-type').value = o.type;
+      tr.querySelector('.f-gender').value = o.genderArea || '';
+      tr.querySelector('.f-noduty').checked = !!o.noDuty;
+      const off = new Set(o.daysOff || []);
+      tr.querySelectorAll('.f-off').forEach((c) => { c.checked = off.has(c.value); });
+    });
+  }
+
+  if (replaceFileBtn && replaceFileInput) {
+    replaceFileBtn.addEventListener('click', () => { replaceFileInput.value = ''; replaceFileInput.click(); });
+    replaceFileInput.addEventListener('change', async () => {
+      const f = replaceFileInput.files && replaceFileInput.files[0];
+      if (!f) return;
+      if (!/\.xlsx?$/i.test(f.name || '')) { showError('יש לבחור קובץ אקסל בלבד (.xlsx).', ''); return; }
+      const NL = String.fromCharCode(10);
+      const manual = removed.length + manualPins.length;
+      if (!confirm('להחליף את קובץ המערכת ב-"' + f.name + '"?' + NL + NL
+        + (manual ? manual + ' שינויים ידניים יישמרו. ' : '')
+        + 'ההגדרות שקבעת למורים יישמרו, ושיבוצים שאינם מתאימים עוד למערכת החדשה יוסרו.')) return;
+      const before = assignments.map((a) => Object.assign({}, a));
+      hide(errorBox); show(loading);
+      try {
+        const fd = new FormData();
+        fd.append('file', f);
+        const resp = await send('/api/inspect', { method: 'POST', body: fd });
+        const data = await resp.json();
+        hide(loading);
+        if (!data.ok) { showError(data.error || 'שגיאה בקריאת הקובץ.', data.detail || ''); return; }
+        const old = collectOverrides().teachers;
+        selectedFile = f;
+        await rememberFileBytes(f);
+        if (fileNameEl) fileNameEl.textContent = f.name;
+        inspectData = data;
+        fileId = data.fileId || null;
+        buildSettings(data);
+        applySettingsBack(old);
+        const ok = await computePlan(true);
+        if (ok) reportLost(before);
+      } catch (err) {
+        hide(loading);
+        showError('לא הצלחנו להחליף את הקובץ.', (err && err.message) || '');
+      }
+    });
+  }
+
   // חלוקה מחדש של כל הלוח — ההסרות הידניות נשמרות, השיבוצים הידניים לא.
   // בלי האזהרה הזו לחיצה אחת מוחקת בשקט את כל מי ששובץ ידנית.
   if (redistributeBtn) {
@@ -877,7 +992,7 @@
         manualPins = [];
         saveState();
       }
-      computePlan(false);
+      computePlan(false, { noPrefer: true });
     });
   }
 
@@ -1224,6 +1339,7 @@
     downloadBtn.style.display = haveBoard ? '' : 'none';
     if (teachersBtn) teachersBtn.style.display = haveBoard ? '' : 'none';
     updatePublishUI();
+    syncKeepBtn();
 
     show(results);
     updateSteps('results');
@@ -1283,6 +1399,7 @@
     unfilledCount.textContent = unfilled.length;
     unfilledList.innerHTML = unfilled.map((u, i) => {
       const free = u.candidates.filter((c) => !c.reason).length;
+      const absent = u.candidates.filter((c) => c.absent).length;
       // בתחילת/סוף יום שם ההפסקה והתפקיד זהים — אין טעם לכתוב אותם פעמיים.
       const edge = (u.break === u.role);
       const where = (DAYF[u.day] || u.day) + ' · ' + (BRK[u.break] || u.break)
@@ -1291,14 +1408,14 @@
         <details class="unf" data-idx="${i}">
           <summary>
             <span class="unf-where">${where}</span>
-            <span class="unf-meta">${u.candidates.length} אנשי צוות נוכחים${free ? ' · ' + free + ' פנויים' : ''}</span>
+            <span class="unf-meta">${free ? free + ' פנויים' : 'אין פנויים'}${absent ? ' · ' + absent + ' לא נוכחים / פטורים (עם הסבר)' : ''}</span>
           </summary>
           <div class="unf-body">
             <p class="unf-sum">${u.summary}</p>
             <table class="unf-table">
               <thead><tr><th>שם</th><th>תפקיד</th><th>תורנויות</th><th>מדוע לא נבחר</th><th></th></tr></thead>
               <tbody>${u.candidates.map((c, j) => `
-                <tr class="${c.reason ? '' : 'free'}">
+                <tr class="${c.reason ? (c.absent ? 'absent' : '') : 'free'}">
                   <td class="t-name">${c.name}</td>
                   <td>${c.type}</td>
                   <td class="center">${c.duties}</td>

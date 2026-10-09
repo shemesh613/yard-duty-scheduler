@@ -179,6 +179,7 @@ body {
 .stat-warn .stat-num { color: var(--warn); }
 
 .download-row { margin-top: 24px; text-align: center; }
+.unf-table tr.absent td { color: #8a8a8a; background: #f7f7f7; }
 .publish-row { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .publish-status { font-size: 0.95rem; color: #555; }
 .publish-status.ok { color: #1d5b32; }

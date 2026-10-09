@@ -128,6 +128,7 @@ function mergeOverrides(base, user) {
   // רשימות התורנויות שהוסרו/נשמרות ידנית עוברות כמות שהן.
   if (user.blocked || base.blocked) out.blocked = user.blocked || base.blocked;
   if (user.pinned || base.pinned) out.pinned = user.pinned || base.pinned;
+  if (user.preferred || base.preferred) out.preferred = user.preferred || base.preferred;
   if (user.extraTeachers || base.extraTeachers) out.extraTeachers = user.extraTeachers || base.extraTeachers;
   if (user.removedTeachers || base.removedTeachers) out.removedTeachers = user.removedTeachers || base.removedTeachers;
   return out;
@@ -157,6 +158,7 @@ function runPipeline(input, overrides = {}) {
     yardPlan,
     blocked: (overrides && overrides.blocked) || [],
     pinned: (overrides && overrides.pinned) || [],
+    preferred: (overrides && overrides.preferred) || [],
   });
   const workbookBuffer = report.buildWorkbook(model, null, dutyPlan);
   const html = report.buildHtml(model, null, dutyPlan);

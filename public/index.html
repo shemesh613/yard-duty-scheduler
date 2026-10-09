@@ -119,6 +119,8 @@
                 title="ההגדרות שבטבלה ייקבעו לשנה, ויחולו בכל העלאה ובכל לוח מכאן והלאה">📌 קבע הגדרות מורים לשנה</button>
         <span id="saveTeachersMsg" class="save-msg" hidden></span>
         <button type="button" id="backBtn" class="btn btn-secondary">◂ חזרה</button>
+        <button type="button" id="applyKeepBtn" class="btn btn-secondary" hidden
+                title="מחיל את ההגדרות על הלוח הקיים: כל השיבוצים והשינויים הידניים נשארים, ורק מה שהשתנה בגללן מתעדכן">✓ החל הגדרות וחזור ללוח</button>
         <button type="button" id="runBtn" class="btn btn-primary btn-run">חשב לוחות</button>
       </div>
     </section>
@@ -146,6 +148,9 @@
           <div class="head-actions">
             <button type="button" id="toCheckBtn" class="btn btn-secondary">📋 כמה קיבל כל אחד</button>
             <button type="button" id="backToSettingsBtn" class="btn btn-secondary">◂ חזרה להגדרות</button>
+            <button type="button" id="replaceFileBtn" class="btn btn-secondary"
+                    title="מחליף את קובץ המערכת בלי לאבד את השינויים הידניים">📥 החלף קובץ אקסל</button>
+            <input type="file" id="replaceFileInput" accept=".xlsx,.xls" hidden />
             <button type="button" id="restartBtn" class="btn btn-secondary">↺ קובץ חדש</button>
           </div>
         </div>
