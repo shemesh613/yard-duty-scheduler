@@ -149,7 +149,7 @@
   // עבודה שנשמרה לפני שהתחלנו לשמור גם את הקובץ עצמו: המזהה בשרת כבר
   // לא קיים, ואין לנו עותק. מבקשים לבחור שוב את אותו קובץ — השינויים
   // הידניים נשמרים, ומכאן והלאה הקובץ נשמר יחד עם העבודה.
-  function askForFileAgain() {
+  function askForFileAgain(why) {
     return new Promise((resolve) => {
       let inp = document.getElementById('recoverFile');
       if (!inp) {
@@ -169,7 +169,7 @@
         if (fileNameEl) fileNameEl.textContent = f.name;
         resolve(true);
       };
-      alert('קובץ המערכת אינו זמין יותר בשרת (הוא נמחק בעדכון גרסה).'
+      alert((why || 'קובץ המערכת אינו זמין יותר בשרת (הוא נמחק בעדכון גרסה).')
         + String.fromCharCode(10) + String.fromCharCode(10)
         + 'בחרו שוב את אותו קובץ אקסל — כל השינויים הידניים שלכם יישמרו,'
         + String.fromCharCode(10)
@@ -255,6 +255,9 @@
       }
       inspectData = data;
       if (data.fileId) fileId = data.fileId;
+      // העותק השמור חייב להיות של הקובץ שנבדק עכשיו ולא של קובץ קודם:
+      // אחרת, אחרי איפוס השרת, הלוח יחושב מקובץ ישן ומורים ייעלמו.
+      await rememberFileBytes(selectedFile);
       buildSettings(data);
       hide(uploadSection);
       show(settingsSection);
@@ -860,6 +863,25 @@
           resp = await postRun(!selectedFile);
           try { data = await resp.json(); }
           catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
+        }
+      }
+      // החישוב נעשה על קובץ אחר מזה שמסך ההגדרות נבנה ממנו (למשל עותק ישן
+      // שנשמר בדפדפן): חסרים מורים, והלוח היה מתרוקן בשקט. לא מציגים אותו —
+      // מבקשים את הקובץ העדכני ומחשבים שוב.
+      const teachersShort = (d) => d.ok && inspectData && Array.isArray(inspectData.teachers)
+        && d.summary && d.summary.teachers + removedTeachers.length < inspectData.teachers.length;
+      if (teachersShort(data)) {
+        const ready = await askForFileAgain('הקובץ ששמור במערכת אינו הקובץ העדכני — חסרים בו מורים שמופיעים בהגדרות, ולכן הלוח לא עודכן.');
+        if (ready) {
+          resp = await postRun(false);
+          try { data = await resp.json(); }
+          catch (_) { throw new Error('השרת החזיר תשובה שאינה תקינה.'); }
+        }
+        if (!ready || teachersShort(data)) {
+          hide(loading);
+          showError('הלוח לא עודכן, כדי לא לאבד שיבוצים.',
+            'הקובץ שנבחר אינו כולל את כל המורים שבהגדרות. בחרו את קובץ המערכת העדכני (לחצו על "החלף קובץ אקסל").');
+          return false;
         }
       }
       hide(loading);

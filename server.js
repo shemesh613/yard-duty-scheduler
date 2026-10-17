@@ -347,7 +347,10 @@ app.post('/api/save-teachers', requireEditKey, express.json({ limit: '2mb' }), (
     }
 
     current._updated = new Date().toISOString().slice(0, 10);
-    fs.writeFileSync(p2, JSON.stringify(current, null, 2) + String.fromCharCode(10), 'utf8');
+    const text2 = JSON.stringify(current, null, 2) + String.fromCharCode(10);
+    fs.writeFileSync(p2, text2, 'utf8');
+    // הדיסק של השרת החינמי נמחק בכל עלייה מחדש — מגבים כדי שההגדרות ישרדו.
+    remoteStore.push('config-overrides.json', text2);
     return res.json({ ok: true, saved });
   } catch (err) {
     console.error('שגיאה בשמירת הגדרות המורים:', err && err.stack ? err.stack : err);
@@ -373,7 +376,9 @@ app.post('/api/save-classes', requireEditKey, express.json({ limit: '256kb' }), 
 
     current.genderByClass = clean;
     current._updated = new Date().toISOString().slice(0, 10);
-    fs.writeFileSync(p, JSON.stringify(current, null, 2) + String.fromCharCode(10), 'utf8');
+    const text = JSON.stringify(current, null, 2) + String.fromCharCode(10);
+    fs.writeFileSync(p, text, 'utf8');
+    remoteStore.push('config-classes.json', text);
 
     return res.json({ ok: true, saved: Object.keys(clean).length });
   } catch (err) {
@@ -644,9 +649,43 @@ async function restoreState() {
   }
 }
 
+// הגדרות המורים והכיתות שנקבעו "לשנה" נשמרות בקבצי config שבריפו, ולכן הקובץ
+// קיים תמיד אחרי עלייה מחדש — אבל בגרסה המקורית. מה ששוחזר מהגיבוי גובר
+// על הגרסה שבריפו, מורה אחר מורה, כדי שלא יאבד שינוי שהמנהלת קבעה.
+async function restoreConfig() {
+  const cfgDir = path.join(__dirname, 'config');
+  const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return {}; } };
+  try {
+    const ovText = await remoteStore.pull('config-overrides.json');
+    if (ovText) {
+      const remote = JSON.parse(ovText);
+      const p = path.join(cfgDir, 'overrides.json');
+      const cur = readJson(p);
+      const merged = Object.assign({}, cur, remote);
+      merged.teachers = Object.assign({}, cur.teachers || {});
+      for (const [n, v] of Object.entries(remote.teachers || {})) {
+        merged.teachers[n] = Object.assign({}, merged.teachers[n] || {}, v);
+      }
+      merged.classes = Object.assign({}, cur.classes || {}, remote.classes || {});
+      fs.writeFileSync(p, JSON.stringify(merged, null, 2) + String.fromCharCode(10), 'utf8');
+      console.log('שוחזרו מ-GitHub הגדרות המורים');
+    }
+    const clText = await remoteStore.pull('config-classes.json');
+    if (clText) {
+      const remote = JSON.parse(clText);
+      const p = path.join(cfgDir, 'classes.json');
+      const cur = readJson(p);
+      cur.genderByClass = Object.assign({}, cur.genderByClass || {}, remote.genderByClass || {});
+      cur._updated = remote._updated || cur._updated;
+      fs.writeFileSync(p, JSON.stringify(cur, null, 2) + String.fromCharCode(10), 'utf8');
+      console.log('שוחזרו מ-GitHub הגדרות הכיתות');
+    }
+  } catch (err) { console.error('שחזור הגדרות מ-GitHub נכשל:', err && err.message || err); }
+}
+
 app.get('/api/backup-status', (req, res) => res.json(remoteStore.status()));
 
-restoreState().finally(() => {
+restoreState().then(restoreConfig).finally(() => {
   app.listen(PORT, () => {
     console.log(`השרת רץ על http://localhost:${PORT}`);
   });
