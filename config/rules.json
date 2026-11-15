@@ -241,7 +241,12 @@
   "_standbyComment": "העדפה לשבץ תורנות בהפסקה הגובלת בשעת שהייה/פרטני.",
   "useLocations": true,
   "_locationsComment": "אם config/locations.json קיים — הפרדה מגדרית אוטומטית + בונוס קרבה לכיתות.",
-  "_specialBreaksNote": "עמדת הדינמיקלאס הוסרה לבקשת ההנהלה, 6.9.2026.",
+  "_specialBreaksNote": "עמדת הדינמיקלאס הוסרה לבקשת ההנהלה, 6.9.2026. במקומה — הפסקה פעילה (activeBreaks), 15.11.2026.",
+  "_activeBreaksComment": "הפסקה פעילה: עמדה נוספת בהפסקה מסוימת ביום מסוים, לבנים או לבנות, עם count תורנים. נוספת על העמדות הרגילות ואינה נספרת באיזון חצר/מבנה. הוראת ההנהלה, 15.11.2026.",
+  "activeBreaks": [
+    { "day": "יום ג", "break": "אחרי 2", "gender": "בנים", "count": 2 },
+    { "day": "יום ד", "break": "אחרי 2", "gender": "בנות", "count": 2 }
+  ],
   "exclusiveDayAll": {
     "day": "יום ו",
     "excludeRoles": [

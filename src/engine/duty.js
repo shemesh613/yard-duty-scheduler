@@ -53,9 +53,9 @@ function mergeRules(rules) {
 }
 
 // גיזרות מיוחדות שאינן מגיעות מקובץ הגיזרות: שער הכניסה (תחילת/סוף יום)
-// ועמדת הדינמיקלאס. אין להן מגדר ואינן נספרות באיזון חצר/מבנה.
+// ועמדות הפסקה פעילה. אינן נספרות באיזון חצר/מבנה.
 const GATE_ZONE = 'שער כניסה';
-const DYNAMIC_ZONE = 'דינמיקלאס';
+const ACTIVE_ROLE = 'הפסקה פעילה';
 
 // ---------- מתחמים (config/zones.json) ----------
 // כל כיתה שייכת לשני מתחמים. המתחמים מחליפים את חלוקת "חצר/מבנה בנים/בנות" הישנה.
@@ -304,7 +304,7 @@ function locationBonus(teacher, area, locations) {
   }
 }
 
-// כמה עמדות תורנות (חצר/מבנה) בהפסקה נתונה — עם התחשבות בהפסקות מיוחדות (דינמיקלאס).
+// כמה עמדות תורנות (חצר/מבנה) בהפסקה נתונה.
 function postsForBreak(day, brk, r) {
   // מצבת מיוחדת ליום — גוברת על כל השאר.
   const dayCfg = (r.dayOverrides || {})[day];
@@ -384,13 +384,18 @@ function buildSlots(model, r) {
         ? dayZones.length : postsForBreak(day, brk, r);
       const baseposts = dayAreas.length || (r.postsPerRegularBreak || 6);
       for (let i = 0; i < posts; i++) {
-        // עמדה מעבר למספר המתחמים — עמדת דינמיקלאס (ימי ב׳ ו-ד׳, הפסקות 10 ו-12).
-        if (i >= baseposts) {
-          slots.push({ day, break: brk, area: DYNAMIC_ZONE, role: 'דינמיקלאס', mgmt: false, dynamic: true, idx: i });
-          continue;
-        }
         const area = dayAreas.length ? dayAreas[i % dayAreas.length] : null;
         slots.push({ day, break: brk, area, role: roleForArea(area), mgmt: false, idx: i });
+      }
+      // הפסקה פעילה — עמדה נוספת בימים ובהפסקות שנקבעו ב-rules.json (activeBreaks),
+      // לבנים או לבנות. הגיזרה נושאת את המגדר, כך שהתאמה מגדרית נבדקת כרגיל.
+      for (const ab of (r.activeBreaks || [])) {
+        if (!ab || ab.day !== day || ab.break !== brk) continue;
+        const n = ab.count != null ? ab.count : 2;
+        const area = ACTIVE_ROLE + (ab.gender ? ' ' + ab.gender : '');
+        for (let i = 0; i < n; i++) {
+          slots.push({ day, break: brk, area, role: ACTIVE_ROLE, mgmt: false, dynamic: true, idx: i });
+        }
       }
       const dayCfg = (r.dayOverrides || {})[day] || {};
       // מספר הסיירים — לפי הפסקה מסוימת, אחרת לפי היום, אחרת ברירת המחדל.
@@ -1317,9 +1322,6 @@ function candidateCost(t, slot, state, r, locations) {
       cost -= (pref.weight != null ? pref.weight : 200);
     }
   }
-
-  // (7) עמדת דינמיקלאס מאוישת בתומכת למידה.
-  if (slot.dynamic && t.type === 'תומכת למידה') cost -= 200;
 
   // (8) מי שזמין בפחות ימים מקבל עדיפות — יש לו פחות הזדמנויות בשבוע,
   // ובלי זה הוא מפסיד כל תחרות ונשאר בלי תורנויות.

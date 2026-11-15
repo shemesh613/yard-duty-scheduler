@@ -1108,7 +1108,7 @@
   // סדר ההפסקות ביום, לצורך מיון הטבלה.
   const BREAK_ORDER = ['תחילת יום', 'אחרי 1', 'אחרי 2', 'אחרי 3', 'אחרי 4',
     'אחרי 5', 'אחרי 6', 'סוף יום'];
-  const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'סייר', 'מ"מ', 'סוף יום'];
+  const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'הפסקה פעילה', 'סייר', 'מ"מ', 'סוף יום'];
   const orderIn = (list, v) => { const i = list.indexOf(v); return i === -1 ? 99 : i; };
 
   function renderDuties() {
@@ -1882,19 +1882,19 @@
       rowFor(label + ' — חצר', 'yard', (a) => a.break === brk && a.role === 'חצר', brk, 'חצר');
       rowFor(label + ' — מבנה', 'bld', (a) => a.break === brk && a.role === 'מבנה', brk, 'מבנה');
       const dynDays = [...new Set(assignments
-        .filter((a) => a.break === brk && a.role === 'דינמיקלאס').map((a) => a.day))];
+        .filter((a) => a.break === brk && a.role === 'הפסקה פעילה').map((a) => a.day))];
       if (dynDays.length) {
-        // דינמיקלאס מתקיים רק בימים מסוימים — תא ריק בשאר הימים אינו חוסר.
+        // הפסקה פעילה מתקיימת רק בימים מסוימים — תא ריק בשאר הימים אינו חוסר.
         const tr = document.createElement('tr');
         tr.className = 'sub';
-        tr.innerHTML = '<th class="rh">דינמיקלאס</th>' + days.map((day) => {
+        tr.innerHTML = '<th class="rh">הפסקה פעילה</th>' + days.map((day) => {
           const items = assignments.map((a, i) => ({ a, i }))
-            .filter(({ a }) => a.day === day && a.break === brk && a.role === 'דינמיקלאס');
+            .filter(({ a }) => a.day === day && a.break === brk && a.role === 'הפסקה פעילה');
           if (items.length) {
             return '<td>' + items.map(({ a, i }) =>
-              `<span class="chip" draggable="true" data-idx="${i}" title="דינמיקלאס">${a.teacherName}</span>`).join('') + '</td>';
+              `<span class="chip" draggable="true" data-idx="${i}" title="הפסקה פעילה">${a.teacherName}</span>`).join('') + '</td>';
           }
-          return '<td class="no-break" title="אין דינמיקלאס ביום זה">—</td>';
+          return '<td class="no-break" title="אין הפסקה פעילה ביום זה">—</td>';
         }).join('');
         tb.appendChild(tr);
       }

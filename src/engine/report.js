@@ -220,7 +220,7 @@ function sheetFromAoa(aoa) {
 }
 
 // סדר תצוגה של תפקידי התורנות.
-const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'דינמיקלאס', 'סייר', 'מ"מ', 'סוף יום'];
+const ROLE_ORDER = ['תחילת יום', 'חצר', 'מבנה', 'הפסקה פעילה', 'סייר', 'מ"מ', 'סוף יום'];
 
 // כל השיבוצים כרשומות שטוחות, ממוינות לפי יום ואז הפסקה ואז תפקיד.
 function flatAssignments(model, dutyPlan) {
@@ -251,6 +251,12 @@ function flatAssignments(model, dutyPlan) {
       || brkRank(x.brk) - brkRank(y.brk)
       || roleRank(x.role) - roleRank(y.role)
       || str(x.name).localeCompare(str(y.name), 'he'));
+}
+
+// למי מיועדת כל הפסקה פעילה — "יום שלישי: בנים". הגיזרה נושאת את המגדר.
+function activeZoneLabels(items) {
+  return [...new Set(items.map((a) =>
+    dayDisplay(str(a.day)) + ': ' + str(a.area).replace('הפסקה פעילה', '').trim()))];
 }
 
 function sheetWithWidths(aoa, widths) {
@@ -310,6 +316,8 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
       .filter((a) => a.day === day && a.brk === brk && fn(a))
       .map((a) => a.name).join(String.fromCharCode(10));
 
+    const activeZones = (brk) => activeZoneLabels(
+      flat.filter((a) => a.brk === brk && a.role === 'הפסקה פעילה'));
     const aoa = [['', 'גיזרות', ...days.map(dayDisplay)]];
     aoa.push(['תחילת יום', '', ...days.map((d) => pick(d, 'תחילת יום', () => true))]);
 
@@ -323,8 +331,8 @@ function buildWorkbook(model, yardPlan, dutyPlan) {
           ...days.map((d) => pick(d, brk, (a) => a.area && zg[a.area] === gender)),
         ]);
       }
-      const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס'));
-      if (dyn.some(Boolean)) aoa.push(['דינמיקלאס', '', ...dyn]);
+      const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'הפסקה פעילה'));
+      if (dyn.some(Boolean)) aoa.push(['הפסקה פעילה', activeZones(brk).join(String.fromCharCode(10)), ...dyn]);
       aoa.push(['מ"מ תורנות', '', ...days.map((d) => pick(d, brk, (a) => a.role === 'מ"מ'))]);
       aoa.push(['סיירת (' + label.replace('הפסקת ', '') + ')', '',
         ...days.map((d) => pick(d, brk, (a) => a.role === 'סייר'))]);
@@ -636,7 +644,7 @@ function dutiesByTeacher(days, dutyPlan) {
 }
 
 /* ---- לוח בפורמט הנהוג בבית הספר ----
-   שורות: תחילת יום, ואז לכל הפסקה — בנות / בנים / דינמיקלאס / מ"מ / סיירת,
+   שורות: תחילת יום, ואז לכל הפסקה — בנות / בנים / הפסקה פעילה / מ"מ / סיירת,
    ולבסוף סיום יום. עמודות: ימי השבוע. */
 
 // מבנה הלוח כנתונים. משמש את דף ההדפסה, את ציור התמונה, ואת צפייה
@@ -662,6 +670,8 @@ function buildBoardData(model, dutyPlan) {
   const pick = (day, brk, fn) => assignments
     .filter((a) => a.day === day && a.break === brk && fn(a))
     .map((a) => str(a.teacherName));
+  const activeZones = (brk) => activeZoneLabels(
+    assignments.filter((a) => a.break === brk && a.role === 'הפסקה פעילה'));
 
   // מבנה הלוח נבנה פעם אחת כנתונים, ומשמש גם ל-HTML להדפסה וגם לציור
   // התמונה בדפדפן. כך אין שני מקורות אמת שיכולים להיפרד זה מזה.
@@ -682,10 +692,10 @@ function buildBoardData(model, dutyPlan) {
       });
     }
 
-    // דינמיקלאס — רק בימים ובהפסקות שבהם הוא מתקיים.
-    const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'דינמיקלאס').map(displayName));
+    // הפסקה פעילה — רק בימים ובהפסקות שבהם היא מתקיימת.
+    const dyn = days.map((d) => pick(d, brk, (a) => a.role === 'הפסקה פעילה').map(displayName));
     if (dyn.some((x) => x.length)) {
-      data.push({ kind: 'sub', label: 'דינמיקלאס', zones: [], cells: dyn });
+      data.push({ kind: 'sub', label: 'הפסקה פעילה', zones: activeZones(brk), cells: dyn });
     }
 
     data.push({ kind: 'sub', label: 'מ"מ תורנות', zones: [],

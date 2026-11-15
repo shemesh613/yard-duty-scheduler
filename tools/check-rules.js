@@ -244,10 +244,16 @@ const RULES = [
     },
   },
   {
-    id: 'דינמיקלאס הוסר',
+    id: 'הפסקה פעילה — שני תורנים, ג׳ בנים ו-ד׳ בנות, הפסקת 10 בלבד',
     check: ({ assignments }) => {
-      const dyn = assignments.filter((a) => a.role === 'דינמיקלאס').length;
-      return { ok: !dyn, detail: dyn ? dyn + ' שיבוצים נותרו' : 'אפס' };
+      const act = assignments.filter((a) => a.role === 'הפסקה פעילה');
+      const old = assignments.filter((a) => a.role === 'דינמיקלאס').length;
+      const at = (d, g) => act.filter((a) => a.day === d && a.break === 'אחרי 2' && a.area === 'הפסקה פעילה ' + g).length;
+      const tue = at('יום ג', 'בנים');
+      const wed = at('יום ד', 'בנות');
+      const stray = act.length - tue - wed;
+      return { ok: tue === 2 && wed === 2 && !stray && !old,
+        detail: 'ג׳ בנים ' + tue + ', ד׳ בנות ' + wed + ', במקום אחר ' + stray + ', דינמיקלאס ' + old };
     },
   },
   {
