@@ -530,7 +530,7 @@ function assignDuties(model, rules, options = {}) {
     if (exCfg) {
       if (slot.day === exCfg.day) {
         if (countsForExclusive(slot.role, exCfg)) st.exQualifying = (st.exQualifying || 0) + 1;
-      } else {
+      } else if (!allowedElsewhere(slot.role, exCfg)) {
         st.exElsewhere = (st.exElsewhere || 0) + 1;
       }
     }
@@ -1129,7 +1129,17 @@ function exclusiveDayOf(teacher, r) {
   if (!cfg) return null;
   if (typeof cfg === 'string') return { day: cfg, excludeRoles: [] };
   if (!cfg.day) return null;
-  return { day: cfg.day, excludeRoles: Array.isArray(cfg.excludeRoles) ? cfg.excludeRoles : [] };
+  return {
+    day: cfg.day,
+    excludeRoles: Array.isArray(cfg.excludeRoles) ? cfg.excludeRoles : [],
+    allowElsewhereRoles: Array.isArray(cfg.allowElsewhereRoles) ? cfg.allowElsewhereRoles : [],
+  };
+}
+
+// תפקידים שמותרים בשאר השבוע גם למי שעשה תורנות ביום הבלעדי (למשל מ"מ),
+// ואינם חוסמים אותו מתורנות ביום הבלעדי. הוראת ההנהלה, 16.11.2026.
+function allowedElsewhere(role, cfg) {
+  return (cfg.allowElsewhereRoles || []).indexOf(role) !== -1;
 }
 
 // האם התורנות נחשבת לעניין הפטור. תפקידים מוחרגים (למשל מ"מ) אינם נחשבים.
@@ -1150,7 +1160,9 @@ function violatesExclusiveDay(teacher, slot, r, st) {
     // תורנות מזכה — אחרת ייווצר פטור למי שכבר עובד בשבוע.
     return countsForExclusive(slot.role, cfg) && elsewhere > 0;
   }
-  // ביום אחר: אסור אם כבר יש לו תורנות מזכה ביום הבלעדי.
+  // ביום אחר: אסור אם כבר יש לו תורנות מזכה ביום הבלעדי — חוץ מתפקיד
+  // שהותר במפורש (מ"מ), שאינו נחשב לעניין זה.
+  if (allowedElsewhere(slot.role, cfg)) return false;
   return qualifying > 0;
 }
 

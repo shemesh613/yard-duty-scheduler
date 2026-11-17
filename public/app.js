@@ -1790,6 +1790,15 @@
     });
   }
 
+  // קפיצה ללוח הגרירה — להחלפה מהירה בין תורנים.
+  const toBoardBtn = $('toBoardBtn');
+  if (toBoardBtn) {
+    toBoardBtn.addEventListener('click', () => {
+      const card = $('boardCard');
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   if (printCheckBtn) {
     printCheckBtn.addEventListener('click', () => {
       const rows = checkRows();

@@ -146,6 +146,7 @@
         <div class="results-head">
           <h2>סיכום</h2>
           <div class="head-actions">
+            <button type="button" id="toBoardBtn" class="btn btn-secondary">🔀 החלפה בגרירה</button>
             <button type="button" id="toCheckBtn" class="btn btn-secondary">📋 כמה קיבל כל אחד</button>
             <button type="button" id="backToSettingsBtn" class="btn btn-secondary">◂ חזרה להגדרות</button>
             <button type="button" id="replaceFileBtn" class="btn btn-secondary"
@@ -174,6 +175,16 @@
           <strong>🖼 שמור כתמונה</strong> (נפתחת בתוך השיחה, הכי נוח למורות)
           ו-<strong>📄 שמור כ-PDF</strong> (נשלח כקובץ מצורף).
         </p>
+      </div>
+
+      <div id="boardCard" class="card board-card">
+        <div class="duties-head">
+          <h2>🔀 הלוח — החלפה בגרירה</h2>
+          <span class="board-hint">גררו שם על שם אחר כדי להחליף ביניהם, או אל עמדה ריקה כדי להעביר אליה. כל שינוי מבקש אישור.</span>
+        </div>
+        <div class="table-wrap board-wrap">
+          <table id="bigBoard" class="big-board"><tbody></tbody></table>
+        </div>
       </div>
 
       <div id="unfilledCard" class="card unfilled-card" hidden>
@@ -253,15 +264,6 @@
         <div id="checkOut" class="check-out" hidden></div>
       </div>
 
-      <div class="card board-card">
-        <div class="duties-head">
-          <h2>הלוח לפני הפצה</h2>
-          <span class="board-hint">גררו שם מתא לתא כדי להחליף בין תורנים. כל שינוי מבקש אישור.</span>
-        </div>
-        <div class="table-wrap board-wrap">
-          <table id="bigBoard" class="big-board"><tbody></tbody></table>
-        </div>
-      </div>
     </section>
   </main>
 

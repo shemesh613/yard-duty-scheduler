@@ -284,7 +284,41 @@ const RULES = [
     },
   },
   {
-    id: 'תורנות בשישי ממצה את השבוע',
+    id: 'מחנכת ומורה משלימה תקשורת — עד 2 תורנויות, ללא מ"מ',
+    check: ({ model, assignments }) => {
+      const types = ['מחנכת', 'מורה משלימה תקשורת'];
+      const bad = [];
+      let n = 0;
+      for (const t of model.teachers) {
+        if (!types.includes(t.type)) continue;
+        n++;
+        const mine = assignments.filter((a) => a.teacherId === t.id && !a.manual);
+        const subs = mine.filter((a) => a.role === 'מ"מ').length;
+        if (subs > 0 || mine.length > 2) bad.push(t.name + ' (' + mine.length + ', מ"מ ' + subs + ')');
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(', ') : n + ' אנשי צוות, אפס חריגות' };
+    },
+  },
+  {
+    id: 'תורן שישי מקבל לכל היותר מ"מ אחת בשאר השבוע',
+    check: ({ model, assignments }, rules) => {
+      const cfg = rules.exclusiveDayAll;
+      if (!cfg) return { ok: true, detail: 'הכלל אינו מוגדר' };
+      const bad = [];
+      let withSub = 0;
+      for (const t of model.teachers) {
+        const mine = assignments.filter((a) => a.teacherId === t.id);
+        const qual = mine.some((a) => a.day === cfg.day && !(cfg.excludeRoles || []).includes(a.role));
+        if (!qual) continue;
+        const subs = mine.filter((a) => a.day !== cfg.day && a.role === 'מ"מ').length;
+        if (subs) withSub++;
+        if (subs > 1) bad.push(t.name);
+      }
+      return { ok: !bad.length, detail: bad.length ? bad.join(', ') : withSub + ' תורני שישי קיבלו גם מ"מ' };
+    },
+  },
+  {
+    id: 'תורנות בשישי ממצה את השבוע (מ"מ מותרת בנוסף)',
     check: ({ model, assignments }, rules) => {
       const cfg = rules.exclusiveDayAll;
       if (!cfg) return { ok: true, detail: 'הכלל אינו מוגדר' };
@@ -293,7 +327,8 @@ const RULES = [
         const mine = assignments.filter((a) => a.teacherId === t.id);
         const qual = mine.filter((a) => a.day === cfg.day
           && !(cfg.excludeRoles || []).includes(a.role)).length;
-        const other = mine.filter((a) => a.day !== cfg.day).length;
+        const other = mine.filter((a) => a.day !== cfg.day
+          && !(cfg.allowElsewhereRoles || []).includes(a.role)).length;
         if (qual > 0 && other > 0) bad.push(t.name);
       }
       return { ok: !bad.length, detail: bad.length ? bad.slice(0, 4).join(', ') : 'אפס חריגות' };
